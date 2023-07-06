@@ -1,6 +1,7 @@
 package dev.revtools.deobfuscator.asm
 
 import dev.revtools.deobfuscator.util.field
+import dev.revtools.deobfuscator.util.nullField
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.tree.ClassNode

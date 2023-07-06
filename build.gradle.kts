@@ -1,3 +1,5 @@
+import java.net.URL
+
 plugins {
     kotlin("jvm")
 }
@@ -19,4 +21,30 @@ allprojects {
         implementation(kotlin("stdlib"))
         implementation(kotlin("reflect"))
     }
+}
+
+
+val TaskContainer.downloadGamepack by tasks.registering {
+    group = "revtools"
+    doLast {
+        downloadGamepack()
+    }
+}
+
+fun downloadGamepack() {
+    println("Downloading latest Old School RuneScape gamepack jar...")
+
+    val file = file("gamepack.jar")
+    if(file.exists()) {
+        println("Overwriting existing gamepack.jar file.")
+        file.deleteRecursively()
+    }
+
+    val url = URL("http://oldschool1.runescape.com/gamepack.jar")
+    val bytes = url.openConnection().getInputStream().readAllBytes()
+
+    file.createNewFile()
+    file.outputStream().use { it.write(bytes) }
+
+    println("Completed download of gamepack jar.")
 }
