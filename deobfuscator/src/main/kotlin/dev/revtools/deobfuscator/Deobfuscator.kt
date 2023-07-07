@@ -1,7 +1,9 @@
 package dev.revtools.deobfuscator
 
 import dev.revtools.deobfuscator.asm.tree.ClassGroup
-import dev.revtools.deobfuscator.transformer.TestTransformer
+import dev.revtools.deobfuscator.transformer.DeadCodeRemover
+import dev.revtools.deobfuscator.transformer.FieldOwnerFixer
+import dev.revtools.deobfuscator.transformer.RuntimeExceptionRemover
 import org.tinylog.kotlin.Logger
 import java.io.File
 import kotlin.reflect.full.createInstance
@@ -15,6 +17,7 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
 
     private fun init() {
         Logger.info("Initializing deobfuscator.")
+
         group.clear()
         transformers.clear()
 
@@ -24,11 +27,16 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
         group.build()
         Logger.info("Loaded ${group.classes.toList().size} input classes.")
 
+        /*
+         * Register bytecode transformers
+         */
         Logger.info("Registering transformers.")
 
-        register<TestTransformer>()
+        register<FieldOwnerFixer>()
+        register<RuntimeExceptionRemover>()
+        register<DeadCodeRemover>()
 
-        Logger.info("Registerd ${transformers.size} transformers.")
+        Logger.info("Registered ${transformers.size} transformers.")
     }
 
     fun run() {
@@ -53,6 +61,10 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
         Logger.info("Deobfuscator finished successfully.")
     }
 
+    @DslMarker
+    private annotation class TransformerRegisterDsl
+
+    @TransformerRegisterDsl
     private inline fun <reified T : Transformer> register() {
         transformers.add(T::class.createInstance())
     }
