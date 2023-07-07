@@ -6,6 +6,7 @@ import org.objectweb.asm.tree.AbstractInsnNode.*
 import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.FieldInsnNode
 import org.objectweb.asm.tree.FieldNode
+import org.objectweb.asm.tree.LineNumberNode
 import org.objectweb.asm.tree.MethodInsnNode
 import org.objectweb.asm.tree.MethodNode
 import org.objectweb.asm.tree.TypeInsnNode
@@ -141,6 +142,10 @@ class ClassGroup {
                     dst.methodTypeRefs.add(this)
                     classRefs.add(dst)
                 }
+            }
+
+            if(insn is LineNumberNode) {
+                lineNumbers.add(insn.line)
             }
         }
     }

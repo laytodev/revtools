@@ -23,6 +23,7 @@ val MethodNode.refsOut: HashSet<MethodNode> by field { hashSetOf() }
 val MethodNode.fieldReadRefs: HashSet<FieldNode> by field { hashSetOf() }
 val MethodNode.fieldWriteRefs: HashSet<FieldNode> by field { hashSetOf() }
 val MethodNode.classRefs: HashSet<ClassNode> by field { hashSetOf() }
+val MethodNode.lineNumbers: MutableList<Int> by field { mutableListOf() }
 
 val MethodNode.id get() = "${owner.id}.$name$desc"
 
