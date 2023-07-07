@@ -1,3 +1,7 @@
+plugins {
+    application
+}
+
 dependencies {
     implementation("org.tinylog:tinylog-api-kotlin:_")
     implementation("org.tinylog:tinylog-impl:_")
@@ -6,4 +10,14 @@ dependencies {
     implementation("org.ow2.asm:asm-util:_")
     implementation("org.ow2.asm:asm-tree:_")
     implementation("com.google.guava:guava:_")
+    runtimeOnly("org.bouncycastle:bcprov-jdk15on:1.52")
+    runtimeOnly("org.json:json:20220320")
+}
+
+application {
+    mainClass.set("dev.revtools.deobfuscator.Deobfuscator")
+}
+
+tasks.named<JavaExec>("run") {
+    workingDir = rootProject.projectDir
 }

@@ -1,4 +1,4 @@
-package dev.revtools.deobfuscator.util
+package dev.revtools.deobfuscator.asm
 
 import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
