@@ -4,6 +4,8 @@ import dev.revtools.deobfuscator.asm.remap.ClassGroupRemapper
 import dev.revtools.deobfuscator.asm.remap.NameMap
 import org.objectweb.asm.Opcodes.GETFIELD
 import org.objectweb.asm.Opcodes.GETSTATIC
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.SimpleRemapper
 import org.objectweb.asm.tree.AbstractInsnNode.*
 import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.FieldInsnNode
@@ -85,9 +87,15 @@ class ClassGroup {
     }
 
     fun remap(nameMap: NameMap) {
-        val newClassMap = ClassGroupRemapper(this, nameMap).remap().toMap() as HashMap<String, ClassNode>
-        clear()
-        newClassMap.values.forEach { add(it) }
+        val newClassMap = hashMapOf<String, ClassNode>()
+        val mapper = SimpleRemapper(nameMap.mappings)
+        classes.forEach { cls ->
+            val newCls = ClassNode()
+            cls.accept(ClassRemapper(newCls, mapper))
+            newClassMap[newCls.name] = newCls
+            newCls.init(this)
+        }
+        classMap = newClassMap
         build()
     }
 }

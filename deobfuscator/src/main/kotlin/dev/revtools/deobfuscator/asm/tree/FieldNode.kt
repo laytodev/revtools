@@ -17,6 +17,7 @@ val FieldNode.id get() = "${owner.id}.$name"
 
 fun FieldNode.isStatic() = (access and Opcodes.ACC_STATIC) != 0
 fun FieldNode.isPrivate() = (access and Opcodes.ACC_PRIVATE) != 0
+fun FieldNode.isFinal() = (access and Opcodes.ACC_FINAL) != 0
 
 internal fun FieldNode.reset() {
 }

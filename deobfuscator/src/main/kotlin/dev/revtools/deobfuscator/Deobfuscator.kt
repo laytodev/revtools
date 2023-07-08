@@ -33,10 +33,19 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
         register<FieldOwnerFixer>()
         register<RuntimeExceptionRemover>()
         register<DeadCodeRemover>()
-        register<OpaqueCheckRemover>()
-        register<ControlFlowFixer>()
+        register<IllegalStateExceptionRemover>()
+        register<ControlFlowNormalizer>()
         register<RedundantGotoRemover>()
-        register<NodeNameGenerator>()
+        register<NameGenerator>()
+        register<StaticMethodOwnerFixer>()
+        register<UnusedArgumentRemover>()
+        register<UnusedMethodRemover>()
+        register<UnusedFieldRemover>()
+        register<ErrorConstructorRemover>()
+        register<ExpressionOrderFixer>()
+        register<MultipliersRemover>()
+        register<DecompilerTrapRemover>()
+        register<GetPathErrorFixer>()
 
         Logger.info("Registered ${transformers.size} transformers.")
     }
@@ -72,6 +81,7 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
     }
 
     companion object {
+
         @JvmStatic
         fun main(args: Array<String>) {
             if(args.size < 2) error("Usage: deobfuscator.jar <input-jar> <output-jar> [-t]")
@@ -84,6 +94,10 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
             }
 
             deobfuscator.run()
+        }
+
+        fun String.isDeobfuscatedName(): Boolean {
+            return (arrayOf("class", "method", "field").any { this.startsWith(it) })
         }
     }
 }

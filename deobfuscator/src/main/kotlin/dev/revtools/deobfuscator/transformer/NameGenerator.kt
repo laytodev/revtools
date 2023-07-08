@@ -6,7 +6,7 @@ import dev.revtools.deobfuscator.asm.remap.NameMap
 import dev.revtools.deobfuscator.asm.tree.*
 import org.tinylog.kotlin.Logger
 
-class NodeNameGenerator : Transformer {
+class NameGenerator : Transformer {
 
     private var classCount = 0
     private var methodCount = 0

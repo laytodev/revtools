@@ -14,7 +14,7 @@ import org.objectweb.asm.tree.TypeInsnNode
 import org.objectweb.asm.tree.VarInsnNode
 import org.tinylog.kotlin.Logger
 
-class OpaqueCheckRemover : Transformer {
+class IllegalStateExceptionRemover : Transformer {
 
     private var count = 0
 

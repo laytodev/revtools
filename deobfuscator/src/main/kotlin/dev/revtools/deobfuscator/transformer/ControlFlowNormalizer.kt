@@ -13,7 +13,7 @@ import org.objectweb.asm.tree.analysis.BasicValue
 import org.tinylog.kotlin.Logger
 import java.util.Stack
 
-class ControlFlowFixer : Transformer {
+class ControlFlowNormalizer : Transformer {
 
     private var count = 0
 

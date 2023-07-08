@@ -41,19 +41,11 @@ class ClassGroupRemapper(
     private val splicedFields = mutableSetOf<MemberRef>()
 
     fun remap(): SortedMap<String, ClassNode> {
-        extractFields()
-        extractMethods()
-
         classMap.values.forEach { cls ->
             cls.remap(remapper)
         }
 
         classMap = classMap.mapKeysTo(TreeMap()) { (_, c) -> c.name }.toSortedMap()
-
-        spliceFields()
-        spliceMethods()
-
-        removeEmptyInitializerMethods()
 
         return classMap
     }
