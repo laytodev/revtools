@@ -1,5 +1,7 @@
 package dev.revtools.deobfuscator.asm.tree
 
+import dev.revtools.deobfuscator.asm.remap.ClassGroupRemapper
+import dev.revtools.deobfuscator.asm.remap.NameMap
 import org.objectweb.asm.Opcodes.GETFIELD
 import org.objectweb.asm.Opcodes.GETSTATIC
 import org.objectweb.asm.tree.AbstractInsnNode.*
@@ -30,6 +32,11 @@ class ClassGroup {
         return classMap.remove(cls.name)
     }
 
+    fun replace(old: ClassNode, new: ClassNode) {
+        remove(old)
+        add(new)
+    }
+
     fun removeIf(check: (ClassNode) -> Boolean) {
         val toRemove = hashSetOf<ClassNode>()
         classes.forEach { cls ->
@@ -48,15 +55,7 @@ class ClassGroup {
 
     fun build() {
         classes.forEach { it.reset() }
-        repeat(2) { step ->
-            classes.forEach { cls ->
-                when(step) {
-                    0 -> cls.buildA()
-                    1 -> cls.buildB()
-                    else -> throw IllegalStateException("Unhandled build step $step.")
-                }
-            }
-        }
+        classes.forEach { it.build() }
     }
 
     fun readJar(file: File) {
@@ -85,72 +84,10 @@ class ClassGroup {
         }
     }
 
-    private fun ClassNode.buildA() {
-        if(superName != null) {
-            parent = getClass(superName)
-            parent?.children?.add(this)
-        }
-
-        interfaces.mapNotNull { getClass(it) }.forEach { itf ->
-            interfaceClasses.add(itf)
-            itf.implementers.add(this)
-        }
-    }
-
-    private fun ClassNode.buildB() {
-        methods.forEach { it.build() }
-        fields.forEach { it.build() }
-    }
-
-    private fun MethodNode.build() {
-        val insns = instructions.iterator()
-        while(insns.hasNext()) {
-            val insn = insns.next()
-
-            when(insn.type) {
-                METHOD_INSN -> {
-                    insn as MethodInsnNode
-                    val owner = group.getClass(insn.owner) ?: continue
-                    val dst = owner.resolveMethod(insn.name, insn.desc) ?: continue
-
-                    dst.refsIn.add(this)
-                    refsOut.add(dst)
-                    dst.owner.methodTypeRefs.add(this)
-                    classRefs.add(dst.owner)
-                }
-
-                FIELD_INSN -> {
-                    insn as FieldInsnNode
-                    val owner = group.getClass(insn.owner) ?: continue
-                    val dst = owner.resolveField(insn.name, insn.desc) ?: continue
-
-                    if(insn.opcode == GETSTATIC || insn.opcode == GETFIELD) {
-                        dst.readRefs.add(this)
-                        fieldReadRefs.add(dst)
-                    } else {
-                        dst.writeRefs.add(this)
-                        fieldWriteRefs.add(dst)
-                    }
-
-                    dst.owner.methodTypeRefs.add(this)
-                    classRefs.add(dst.owner)
-                }
-
-                TYPE_INSN -> {
-                    insn as TypeInsnNode
-                    val dst = group.getClass(insn.desc) ?: continue
-                    dst.methodTypeRefs.add(this)
-                    classRefs.add(dst)
-                }
-            }
-
-            if(insn is LineNumberNode) {
-                lineNumbers.add(insn.line)
-            }
-        }
-    }
-
-    private fun FieldNode.build() {
-
+    fun remap(nameMap: NameMap) {
+        val newClassMap = ClassGroupRemapper(this, nameMap).remap().toMap() as HashMap<String, ClassNode>
+        clear()
+        newClassMap.values.forEach { add(it) }
+        build()
     }
 }

@@ -31,14 +31,12 @@ val TaskContainer.downloadGamepack by tasks.registering {
     }
 }
 
-val TaskContainer.deobfuscateGamepack by tasks.registering {
+val TaskContainer.deobfuscateGamepack by tasks.register<GradleBuild>("deobfuscateGamepack") {
     group = "revtools"
-    dependsOn(project(":deobfuscator").tasks.getByName("build"))
-    doLast {
-        project(":deobfuscator").tasks.named<JavaExec>("run") {
+    val exec = project(":deobfuscator").tasks.named<JavaExec>("run") {
             args = listOf("gamepack.jar", "gamepack.deob.jar", "-t")
-        }.get().exec()
-    }
+    }.get()
+    dependsOn(exec)
 }
 
 fun downloadGamepack() {

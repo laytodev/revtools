@@ -2,7 +2,7 @@ package dev.revtools.deobfuscator.transformer
 
 import dev.revtools.deobfuscator.Transformer
 import dev.revtools.deobfuscator.asm.InsnMatcher
-import dev.revtools.deobfuscator.asm.intConstant
+import dev.revtools.deobfuscator.asm.util.intConstant
 import dev.revtools.deobfuscator.asm.tree.ClassGroup
 import dev.revtools.deobfuscator.asm.tree.isStatic
 import org.objectweb.asm.Opcodes.GOTO

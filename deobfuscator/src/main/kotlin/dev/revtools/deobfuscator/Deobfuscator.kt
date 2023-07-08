@@ -36,6 +36,7 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
         register<OpaqueCheckRemover>()
         register<ControlFlowFixer>()
         register<RedundantGotoRemover>()
+        register<NodeNameGenerator>()
 
         Logger.info("Registered ${transformers.size} transformers.")
     }

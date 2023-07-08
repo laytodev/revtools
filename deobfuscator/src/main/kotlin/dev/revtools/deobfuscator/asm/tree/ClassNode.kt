@@ -32,9 +32,6 @@ val ClassNode.subClasses get() = hashSetOf<ClassNode>()
     .plus(children)
     .plus(implementers)
 
-val ClassNode.methodTypeRefs: HashSet<MethodNode> by field { hashSetOf() }
-val ClassNode.fieldTypeRefs: HashSet<FieldNode> by field { hashSetOf() }
-
 val ClassNode.id get() = name
 
 fun ClassNode.isInterface() = (access and ACC_INTERFACE) != 0
@@ -43,54 +40,12 @@ fun ClassNode.isAbstract() = (access and ACC_ABSTRACT) != 0
 fun ClassNode.getMethod(name: String, desc: String) = methods.firstOrNull { it.name == name && it.desc == desc }
 fun ClassNode.getField(name: String, desc: String) = fields.firstOrNull { it.name == name && it.desc == desc }
 
-fun ClassNode.resolveMethod(name: String, desc: String): MethodNode? {
-    var cls: ClassNode? = this
-
-    do {
-        val ret = cls!!.getMethod(name, desc)
-        if(ret != null) return ret
-        cls = cls.parent
-    } while(cls != null)
-
-    val queue = ArrayDeque<ClassNode>()
-    queue.addAll(interfaceClasses)
-
-    cls = queue.poll()
-    while(cls != null) {
-        val ret = cls.getMethod(name, desc)
-        if(ret != null) return ret
-        queue.addAll(cls.interfaceClasses)
-        cls = queue.poll()
-    }
-
-    return null
+fun ClassNode.findMethod(name: String, desc: String): MethodNode? {
+    return getMethod(name, desc) ?: parent?.findMethod(name, desc)
 }
 
-fun ClassNode.resolveField(name: String, desc: String): FieldNode? {
-    var ret = getField(name, desc)
-    if(ret != null) return ret
-
-    if(interfaceClasses.isNotEmpty()) {
-        val queue = ArrayDeque<ClassNode>()
-        queue.addAll(interfaceClasses)
-
-        var cls = queue.pollFirst()
-        while(cls != null) {
-            ret = cls.getField(name, desc)
-            if(ret != null) return ret
-            cls.interfaceClasses.forEach { queue.addFirst(it) }
-            cls = queue.pollFirst()
-        }
-    }
-
-    var cls = parent
-    while(cls != null) {
-        ret = cls.getField(name, desc)
-        if(ret != null) return ret
-        cls = cls.parent
-    }
-
-    return null
+fun ClassNode.findField(name: String, desc: String): FieldNode? {
+    return getField(name, desc) ?: parent?.findField(name, desc)
 }
 
 fun ClassNode.fromBytes(bytes: ByteArray, flags: Int = ClassReader.SKIP_FRAMES): ClassNode {
@@ -110,8 +65,18 @@ internal fun ClassNode.reset() {
     children.clear()
     interfaceClasses.clear()
     implementers.clear()
-    methodTypeRefs.clear()
-    fieldTypeRefs.clear()
     methods.forEach { it.reset() }
     fields.forEach { it.reset() }
+}
+
+internal fun ClassNode.build() {
+    if(superName != null) {
+        parent = group.getClass(superName)
+        parent?.children?.add(this)
+    }
+
+    interfaces.mapNotNull { group.getClass(it) }.forEach { itf ->
+        interfaceClasses.add(itf)
+        itf.implementers.add(this)
+    }
 }

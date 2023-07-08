@@ -1,5 +1,6 @@
-package dev.revtools.deobfuscator.asm
+package dev.revtools.deobfuscator.asm.util
 
+import dev.revtools.deobfuscator.asm.stackMetadata
 import org.objectweb.asm.tree.AbstractInsnNode
 import org.objectweb.asm.tree.InsnList
 import org.objectweb.asm.tree.LabelNode

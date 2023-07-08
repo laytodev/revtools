@@ -1,4 +1,4 @@
-package dev.revtools.deobfuscator.asm
+package dev.revtools.deobfuscator.asm.util
 
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.tree.AbstractInsnNode
