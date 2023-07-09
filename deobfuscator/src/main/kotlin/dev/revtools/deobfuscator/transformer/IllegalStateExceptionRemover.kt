@@ -70,7 +70,7 @@ class IllegalStateExceptionRemover : Transformer {
         private val THROW_PATTERN = InsnMatcher.compile(
             """
                 (ILOAD)
-                ([ICONST_0-LDC])
+                ([ICONST_M1-LDC])
                 ([IF_ICMPEQ-IF_ACMPNE])
                 (NEW)
                 (DUP)
@@ -82,7 +82,7 @@ class IllegalStateExceptionRemover : Transformer {
         private val RETURN_PATTERN = InsnMatcher.compile(
             """
                 (ILOAD)
-                ([ICONST_0-LDC])
+                ([ICONST_M1-LDC])
                 ([IF_ICMPEQ-IF_ACMPNE])
                 ([IRETURN-RETURN])
             """.trimIndent()

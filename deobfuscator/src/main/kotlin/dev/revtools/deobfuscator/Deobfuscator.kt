@@ -41,11 +41,18 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
         register<UnusedArgumentRemover>()
         register<UnusedMethodRemover>()
         register<UnusedFieldRemover>()
+        register<FieldSorter>()
+        register<MethodSorter>()
         register<ErrorConstructorRemover>()
         register<ExpressionOrderFixer>()
         register<MultipliersRemover>()
         register<DecompilerTrapRemover>()
         register<GetPathErrorFixer>()
+        register<ControlFlowNormalizer>()
+        register<RedundantGotoRemover>()
+        register<DeadCodeRemover>()
+        register<EmptyClassRemover>()
+        register<CopyPropagationFixer>()
 
         Logger.info("Registered ${transformers.size} transformers.")
     }

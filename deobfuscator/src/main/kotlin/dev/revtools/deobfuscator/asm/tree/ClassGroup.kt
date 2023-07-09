@@ -34,6 +34,10 @@ class ClassGroup {
         return classMap.remove(cls.name)
     }
 
+    fun remove(name: String): ClassNode? {
+        return classMap.remove(name)
+    }
+
     fun replace(old: ClassNode, new: ClassNode) {
         remove(old)
         add(new)
