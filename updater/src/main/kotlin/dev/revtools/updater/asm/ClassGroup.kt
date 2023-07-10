@@ -1,5 +1,8 @@
 package dev.revtools.updater.asm
 
+import dev.reimer.progressbar.ktx.progressBar
+import me.tongfei.progressbar.ProgressBarBuilder
+import me.tongfei.progressbar.ProgressBarStyle
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes.*
 import org.objectweb.asm.Type
@@ -165,20 +168,34 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
         // Create base object shared class.
         env.sharedGroup.getCreateClass("java/lang/Object")
 
+        val progress = ProgressBarBuilder()
+            .setTaskName("Processing classes")
+            .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BLOCK)
+            .setInitialMax((classes.size * 3).toLong())
+            .setUpdateIntervalMillis(10)
+            .continuousUpdate()
+            .setMaxRenderedLength(120)
+            .build()
+
         // Step A
         classes.forEach { cls ->
             processA(cls)
+            progress.step()
         }
 
         // Step B
         classes.forEach { cls ->
             processB(cls)
+            progress.step()
         }
 
         // Step C
         classes.forEach { cls ->
             processC(cls)
+            progress.step()
         }
+
+        progress.close()
     }
 
     private fun processA(cls: ClassEntry) {

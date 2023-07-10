@@ -1,8 +1,5 @@
 package dev.revtools.updater.asm
 
-import lukfor.progress.Components
-import lukfor.progress.TaskService
-import lukfor.progress.tasks.ITaskRunnable
 import java.io.File
 
 class ClassEnv {

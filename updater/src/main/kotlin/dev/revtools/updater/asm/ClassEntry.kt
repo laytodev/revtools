@@ -6,6 +6,12 @@ import java.util.ArrayDeque
 
 class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : Matchable<ClassEntry>() {
 
+    init {
+        if(group.isShared) {
+            match = this
+        }
+    }
+
     val env get() = group.env
 
     val access = node.access
@@ -31,6 +37,12 @@ class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : M
 
     private val fieldMap = hashMapOf<String, FieldEntry>()
     val fields get() = fieldMap.values
+
+    val memberMethods get() = methods.filter { !it.isStatic() }
+    val memberFields get() = fields.filter { !it.isStatic() }
+
+    val staticMethods get() = methods.filter { it.isStatic() }
+    val staticFields get() = fields.filter { it.isStatic() }
 
     fun addMethod(method: MethodEntry) {
         methodMap[method.id] = method
@@ -168,6 +180,13 @@ class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : M
         }
 
         return null
+    }
+
+    fun isArray() = elementClass != null
+
+    val dims: Int get() {
+        if(!isArray()) return 0
+        return id.lastIndexOf('[') + 1
     }
 
     fun isInterface() = (access and ACC_INTERFACE) != 0

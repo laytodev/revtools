@@ -6,5 +6,6 @@ dependencies {
     implementation("com.google.guava:guava:_")
     implementation("org.bouncycastle:bcprov-jdk15on:1.52")
     implementation("org.json:json:20220320")
-    implementation("com.github.lukfor:magic-progress:_")
+    implementation("me.tongfei:progressbar:_")
+    implementation("dev.reimer:progressbar-ktx:_")
 }
