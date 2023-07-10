@@ -10,6 +10,14 @@ object MethodClassifier : AbstractClassifier<MethodEntry>() {
         addRanker(accessFlags, 4)
         addRanker(argTypes, 10)
         addRanker(retType, 5)
+        addRanker(parentMethod, 10)
+        addRanker(childMethods, 3)
+        addRanker(classRefs, 3)
+        addRanker(outRefs, 6)
+        addRanker(inRefs, 6)
+        addRanker(fieldWrites, 5)
+        addRanker(fieldReads, 5)
+        addRanker(code, 12)
     }
 
     private val methodType = ranker("method type") { a, b ->
@@ -32,5 +40,37 @@ object MethodClassifier : AbstractClassifier<MethodEntry>() {
 
     private val retType = ranker("ret type") { a, b ->
         return@ranker if(ClassifierUtil.isMaybeEqual(a, b)) 1.0 else 0.0
+    }
+
+    private val classRefs = ranker("class refs") { a, b ->
+        return@ranker ClassifierUtil.compareClassSets(a.classRefs, b.classRefs)
+    }
+
+    private val parentMethod = ranker("parent method") { a, b ->
+        return@ranker if(ClassifierUtil.isMaybeEqualNullable(a.parent, b.parent)) 1.0 else 0.0
+    }
+
+    private val childMethods = ranker("child methods") { a, b ->
+        return@ranker ClassifierUtil.compareMethodSets(a.children, b.children)
+    }
+
+    private val outRefs = ranker("out refs") { a, b ->
+        return@ranker ClassifierUtil.compareMethodSets(a.refsOut, b.refsOut)
+    }
+
+    private val inRefs = ranker("in refs") { a, b ->
+        return@ranker ClassifierUtil.compareMethodSets(a.refsIn, b.refsIn)
+    }
+
+    private val fieldWrites = ranker("field writes") { a, b ->
+        return@ranker ClassifierUtil.compareFieldSets(a.fieldWriteRefs, b.fieldWriteRefs)
+    }
+
+    private val fieldReads = ranker("field reads") { a, b ->
+        return@ranker ClassifierUtil.compareFieldSets(a.fieldReadRefs, b.fieldReadRefs)
+    }
+
+    private val code = ranker("code") { a, b ->
+        return@ranker ClassifierUtil.compareInsns(a.instructions, b.instructions)
     }
 }

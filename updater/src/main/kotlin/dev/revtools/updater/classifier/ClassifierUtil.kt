@@ -1,9 +1,25 @@
 package dev.revtools.updater.classifier
 
+import dev.revtools.updater.Updater
 import dev.revtools.updater.asm.ClassEntry
 import dev.revtools.updater.asm.FieldEntry
 import dev.revtools.updater.asm.Matchable
 import dev.revtools.updater.asm.MethodEntry
+import org.objectweb.asm.Type
+import org.objectweb.asm.tree.AbstractInsnNode
+import org.objectweb.asm.tree.AbstractInsnNode.*
+import org.objectweb.asm.tree.FieldInsnNode
+import org.objectweb.asm.tree.IincInsnNode
+import org.objectweb.asm.tree.InsnList
+import org.objectweb.asm.tree.IntInsnNode
+import org.objectweb.asm.tree.JumpInsnNode
+import org.objectweb.asm.tree.LdcInsnNode
+import org.objectweb.asm.tree.LookupSwitchInsnNode
+import org.objectweb.asm.tree.MethodInsnNode
+import org.objectweb.asm.tree.MultiANewArrayInsnNode
+import org.objectweb.asm.tree.TableSwitchInsnNode
+import org.objectweb.asm.tree.TypeInsnNode
+import org.objectweb.asm.tree.VarInsnNode
 import java.util.*
 import java.util.concurrent.Executors
 import kotlin.collections.HashSet
@@ -39,6 +55,24 @@ object ClassifierUtil {
             if(!isMaybeEqual(a.cls, b.cls)) return false
         }
         return true
+    }
+
+    fun isMaybeEqualNullable(a: ClassEntry?, b: ClassEntry?): Boolean {
+        if(a == null && b == null) return true
+        if(a == null || b == null) return false
+        return isMaybeEqual(a, b)
+    }
+
+    fun isMaybeEqualNullable(a: MethodEntry?, b: MethodEntry?): Boolean {
+        if(a == null && b == null) return true
+        if(a == null || b == null) return false
+        return isMaybeEqual(a, b)
+    }
+
+    fun isMaybeEqualNullable(a: FieldEntry?, b: FieldEntry?): Boolean {
+        if(a == null && b == null) return true
+        if(a == null || b == null) return false
+        return isMaybeEqual(a, b)
     }
 
     private fun <T : Matchable<T>> rank(src: T, dst: T, rankers: List<Ranker<T>>, maybeEqualCheck: (T, T) -> Boolean, maxMismatch: Double): RankResult<T>? {
@@ -169,8 +203,14 @@ object ClassifierUtil {
     }
 
     fun compareClassLists(listA: List<ClassEntry>, listB: List<ClassEntry>): Double {
-        return compareLists(listA, listB, List<ClassEntry>::get, List<ClassEntry>::size) { a: ClassEntry, b: ClassEntry ->
+        return compareLists(listA, listB, List<ClassEntry>::get, List<ClassEntry>::size) { a, b ->
             if (isMaybeEqual(a, b)) COMPARED_SIMILAR else COMPARED_DISTINCT
+        }
+    }
+
+    fun compareFieldLists(listA: List<FieldEntry>, listB: List<FieldEntry>): Double {
+        return compareLists(listA, listB, List<FieldEntry>::get, List<FieldEntry>::size) { a, b ->
+            if(isMaybeEqual(a, b)) COMPARED_SIMILAR else COMPARED_DISTINCT
         }
     }
 
@@ -295,6 +335,148 @@ object ClassifierUtil {
         }
 
         return ret
+    }
+
+    fun compareInsns(listA: InsnList, listB: InsnList, mthA: MethodEntry? = null, mthB: MethodEntry? = null): Double {
+        return compareLists(listA, listB, InsnList::get, InsnList::size) { insnA, insnB ->
+            compareInsns(insnA, insnB, listA, listB, { list, insn -> list.indexOf(insn) }, mthA, mthB)
+        }
+    }
+
+    private fun <T> compareInsns(insnA: AbstractInsnNode, insnB: AbstractInsnNode, listA: T, listB: T, getPos: (T, AbstractInsnNode) -> Int, mthA: MethodEntry?, mthB: MethodEntry?): Int {
+        if(insnA.opcode != insnB.opcode) return COMPARED_DISTINCT
+        val env = Updater.env
+
+        when(insnA.type) {
+            INT_INSN -> {
+                insnA as IntInsnNode
+                insnB as IntInsnNode
+
+                return if(insnA.operand == insnB.operand) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            TYPE_INSN -> {
+                insnA as TypeInsnNode
+                insnB as TypeInsnNode
+
+                val clsA = env.groupA.getClass(insnA.desc)
+                val clsB = env.groupB.getClass(insnB.desc)
+
+                return if(isMaybeEqualNullable(clsA, clsB)) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            FIELD_INSN -> {
+                insnA as FieldInsnNode
+                insnB as FieldInsnNode
+
+                val ownerA = env.groupA.getClass(insnA.owner)
+                val ownerB = env.groupB.getClass(insnB.owner)
+
+                if(ownerA == null && ownerB == null) return COMPARED_SIMILAR
+                if(ownerA == null || ownerB == null) return COMPARED_DISTINCT
+
+                val fieldA = ownerA.resolveField(insnA.name, insnB.desc)
+                val fieldB = ownerB.resolveField(insnB.name, insnB.desc)
+
+                return if(isMaybeEqualNullable(fieldA, fieldB)) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            METHOD_INSN -> {
+                insnA as MethodInsnNode
+                insnB as MethodInsnNode
+
+                return if(compareMethods(
+                    insnA.owner, insnA.name, insnA.desc, insnA.itf,
+                    insnB.owner, insnB.name, insnB.desc, insnB.itf
+                )) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            JUMP_INSN -> {
+                insnA as JumpInsnNode
+                insnB as JumpInsnNode
+
+                val dirA = Integer.signum(getPos(listA, insnA.label) - getPos(listA, insnA))
+                val dirB = Integer.signum(getPos(listB, insnB.label) - getPos(listB, insnB))
+
+                return if(dirA == dirB) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            LDC_INSN -> {
+                insnA as LdcInsnNode
+                insnB as LdcInsnNode
+
+                val typeClsA = insnA.cst::class.java
+                if(typeClsA != insnB.cst::class.java) return COMPARED_DISTINCT
+
+                if(typeClsA == Type::class.java) {
+                    val typeA = insnA.cst as Type
+                    val typeB = insnB.cst as Type
+                    if(typeA.sort != typeB.sort) return COMPARED_DISTINCT
+                    when(typeA.sort) {
+                        Type.ARRAY, Type.OBJECT -> {
+                            return if(isMaybeEqualNullable(env.groupA.getClassById(typeA.descriptor), env.groupB.getClassById(typeB.descriptor))) COMPARED_SIMILAR else COMPARED_DISTINCT
+                        }
+                        Type.METHOD -> { /* Not Implemented */ }
+
+                    }
+                } else {
+                    return if(insnA.cst == insnB.cst) COMPARED_SIMILAR else COMPARED_DISTINCT
+                }
+            }
+
+            IINC_INSN -> {
+                insnA as IincInsnNode
+                insnB as IincInsnNode
+
+                return if(insnA.incr != insnB.incr) COMPARED_DISTINCT else COMPARED_SIMILAR
+            }
+
+            TABLESWITCH_INSN -> {
+                insnA as TableSwitchInsnNode
+                insnB as TableSwitchInsnNode
+
+                return if(insnA.min == insnB.min && insnA.max == insnB.max) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            LOOKUPSWITCH_INSN -> {
+                insnA as LookupSwitchInsnNode
+                insnB as LookupSwitchInsnNode
+
+                return if(insnA.keys == insnB.keys) return COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+
+            MULTIANEWARRAY_INSN -> {
+                insnA as MultiANewArrayInsnNode
+                insnB as MultiANewArrayInsnNode
+
+                if(insnA.dims != insnB.dims) return COMPARED_DISTINCT
+
+                val clsA = env.groupA.getClass(insnA.desc)
+                val clsB = env.groupB.getClass(insnB.desc)
+
+                return if(isMaybeEqualNullable(clsA, clsB)) COMPARED_SIMILAR else COMPARED_DISTINCT
+            }
+        }
+
+        return COMPARED_SIMILAR
+    }
+
+    private fun compareMethods(ownerA: String, nameA: String, descA: String, toIfA: Boolean, ownerB: String, nameB: String, descB: String, toIfB: Boolean): Boolean {
+        val env = Updater.env
+
+        val clsA = env.groupA.getClass(ownerA)
+        val clsB = env.groupB.getClass(ownerB)
+
+        if(clsA == null && clsB == null) return true
+        if(clsA == null || clsB == null) return false
+
+        val methodA = clsA.resolveMethod(nameA, descA, toIfA)
+        val methodB = clsB.resolveMethod(nameB, descB, toIfB)
+
+        if(methodA == null && methodB == null) return true
+        if(methodA == null || methodB == null) return false
+
+        return isMaybeEqual(methodA, methodB)
     }
 
     const val COMPARED_SIMILAR = 0
