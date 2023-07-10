@@ -2,6 +2,8 @@ package dev.revtools.updater
 
 import dev.revtools.updater.asm.*
 import dev.revtools.updater.classifier.*
+import me.tongfei.progressbar.ProgressBarBuilder
+import me.tongfei.progressbar.ProgressBarStyle
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -13,6 +15,7 @@ object Updater {
 
     fun init(jarA: File, jarB: File) {
         env.init(jarA, jarB)
+
         matchUnobfuscated()
 
         // Init all classifiers
@@ -211,25 +214,33 @@ object Updater {
     }
 
     fun autoMatchClasses(): Boolean {
-        println("Matching classes...")
-
         val filter = { cls: ClassEntry -> !cls.hasMatch() }
         val srcClasses = env.groupA.classes.filter(filter)
         val dstClasses = env.groupB.classes.filter(filter)
+
+        val progress = ProgressBarBuilder()
+            .setTaskName("Matching Classes")
+            .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BAR)
+            .setInitialMax(srcClasses.size.toLong())
+            .setUpdateIntervalMillis(10)
+            .continuousUpdate()
+            .setMaxRenderedLength(120)
+            .build()
 
         val maxScore = ClassClassifier.maxScore
         val maxMismatch = maxScore - getRawScore(classAbsThreshold * (1 - classRelThreshold), maxScore)
         val matches = ConcurrentHashMap<ClassEntry, ClassEntry>()
         srcClasses.forEach { src ->
+            progress.step()
             val ranking = ClassifierUtil.rank(src, dstClasses, ClassClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
             if(checkRank(ranking, classAbsThreshold, classRelThreshold, maxScore)) {
                 val match = ranking[0].subject
                 matches[src] = match
             }
         }
+        progress.close()
 
         reduceMatches(matches)
-
         matches.forEach { (src, dst) ->
             match(src, dst)
         }
@@ -239,8 +250,6 @@ object Updater {
     }
 
     fun autoMatchMemberMethods(): Boolean {
-        println("Matching member methods...")
-
         val totalUnmatched = AtomicInteger()
 
         fun matchMemberMethods(totalUnmatched: AtomicInteger): ConcurrentHashMap<MethodEntry, MethodEntry> {
@@ -253,10 +262,20 @@ object Updater {
             val maxMismatch = maxScore - getRawScore(methodAbsThreshold * (1 - methodRelThreshold), maxScore)
             val ret = ConcurrentHashMap<MethodEntry, MethodEntry>()
 
+            val progress = ProgressBarBuilder()
+                .setTaskName("Matching Member-Methods")
+                .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BAR)
+                .setInitialMax((classes.flatMap { it.memberMethods }.count { !it.hasMatch() && it.isMatchable }).toLong())
+                .setUpdateIntervalMillis(10)
+                .continuousUpdate()
+                .setMaxRenderedLength(120)
+                .build()
+
             classes.forEach { srcCls ->
                 var unmatched = 0
                 for(srcMethod in srcCls.memberMethods) {
                     if(srcMethod.hasMatch() || !srcMethod.isMatchable) continue
+                    progress.step()
                     val ranking = ClassifierUtil.rank(srcMethod, srcCls.match!!.memberMethods.toList(), MethodClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
                     if(checkRank(ranking, methodAbsThreshold, methodRelThreshold, maxScore)) {
                         val match = ranking[0].subject
@@ -267,6 +286,7 @@ object Updater {
                 }
                 if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
             }
+            progress.close()
 
             reduceMatches(ret)
             return ret
@@ -282,8 +302,6 @@ object Updater {
     }
 
     fun autoMatchStaticMethods(): Boolean {
-        println("Matching static methods...")
-
         val totalUnmatched = AtomicInteger()
 
         fun matchStaticMethods(totalUnmatched: AtomicInteger): ConcurrentHashMap<MethodEntry, MethodEntry> {
@@ -295,9 +313,19 @@ object Updater {
             val maxMismatch = maxScore - getRawScore(methodAbsThreshold * (1 - methodRelThreshold), maxScore)
             val ret = ConcurrentHashMap<MethodEntry, MethodEntry>()
 
+            val progress = ProgressBarBuilder()
+                .setTaskName("Matching Static-Methods")
+                .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BAR)
+                .setInitialMax(srcMethods.size.toLong())
+                .setUpdateIntervalMillis(10)
+                .continuousUpdate()
+                .setMaxRenderedLength(120)
+                .build()
+
             var unmatched = 0
             for(srcMethod in srcMethods) {
                 if(srcMethod.hasMatch() || !srcMethod.isMatchable) continue
+                progress.step()
                 val dstMethods = env.groupB.classes.flatMap { it.staticMethods }.filter { !it.hasMatch() }
                 val ranking = ClassifierUtil.rank(srcMethod, dstMethods, MethodClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
                 if(checkRank(ranking, methodAbsThreshold, methodRelThreshold, maxScore)) {
@@ -308,6 +336,7 @@ object Updater {
                 }
             }
             if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
+            progress.close()
 
             reduceMatches(ret)
             return ret
@@ -323,8 +352,6 @@ object Updater {
     }
 
     fun autoMatchMemberFields(): Boolean {
-        println("Matching member methods...")
-
         val totalUnmatched = AtomicInteger()
 
         fun matchMemberFields(totalUnmatched: AtomicInteger): ConcurrentHashMap<FieldEntry, FieldEntry> {
@@ -337,10 +364,20 @@ object Updater {
             val maxMismatch = maxScore - getRawScore(fieldAbsThreshold * (1 - fieldRelThreshold), maxScore)
             val ret = ConcurrentHashMap<FieldEntry, FieldEntry>()
 
+            val progress = ProgressBarBuilder()
+                .setTaskName("Matching Member-Fields")
+                .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BAR)
+                .setInitialMax((classes.flatMap { it.memberFields }.count { !it.hasMatch() && it.isMatchable }).toLong())
+                .setUpdateIntervalMillis(10)
+                .continuousUpdate()
+                .setMaxRenderedLength(120)
+                .build()
+
             classes.forEach { srcCls ->
                 var unmatched = 0
                 for(srcField in srcCls.memberFields) {
                     if(srcField.hasMatch() || !srcField.isMatchable) continue
+                    progress.step()
                     val ranking = ClassifierUtil.rank(srcField, srcCls.match!!.memberFields.toList(), FieldClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
                     if(checkRank(ranking, fieldAbsThreshold, fieldRelThreshold, maxScore)) {
                         val match = ranking[0].subject
@@ -351,6 +388,7 @@ object Updater {
                 }
                 if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
             }
+            progress.close()
 
             reduceMatches(ret)
             return ret
@@ -366,8 +404,6 @@ object Updater {
     }
 
     fun autoMatchStaticFields(): Boolean {
-        println("Matching static fields...")
-
         val totalUnmatched = AtomicInteger()
 
         fun matchStaticFields(totalUnmatched: AtomicInteger): ConcurrentHashMap<FieldEntry, FieldEntry> {
@@ -379,9 +415,19 @@ object Updater {
             val maxMismatch = maxScore - getRawScore(fieldAbsThreshold * (1 - fieldRelThreshold), maxScore)
             val ret = ConcurrentHashMap<FieldEntry, FieldEntry>()
 
+            val progress = ProgressBarBuilder()
+                .setTaskName("Matching Static-Fields")
+                .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BAR)
+                .setInitialMax(srcFields.size.toLong())
+                .setUpdateIntervalMillis(10)
+                .continuousUpdate()
+                .setMaxRenderedLength(120)
+                .build()
+
             var unmatched = 0
             for(srcField in srcFields) {
                 if(srcField.hasMatch() || !srcField.isMatchable) continue
+                progress.step()
                 val dstFields = env.groupB.classes.flatMap { it.staticFields }.filter { !it.hasMatch() }
                 val ranking = ClassifierUtil.rank(srcField, dstFields, FieldClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
                 if(checkRank(ranking, fieldAbsThreshold, fieldRelThreshold, maxScore)) {
@@ -392,6 +438,7 @@ object Updater {
                 }
             }
             if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
+            progress.close()
 
             reduceMatches(ret)
             return ret
@@ -450,7 +497,7 @@ object Updater {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        if(args.size != 3) error("Usage: updater.jar <old-jar> <new-jar> <output-jar>")
+        if(args.size < 3) error("Usage: updater.jar <old-jar> <new-jar> <output-jar>")
         val jarA = File(args[0])
         val jarB = File(args[1])
         val outputJar = File(args[2])

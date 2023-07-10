@@ -18,7 +18,6 @@ dependencies {
 
 application {
     mainClass.set("dev.revtools.deobfuscator.Deobfuscator")
-
 }
 
 tasks.named<JavaExec>("run") {

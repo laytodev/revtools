@@ -4,7 +4,10 @@ plugins {
 
 application {
     mainClass.set("dev.revtools.updater.Updater")
-    executableDir = rootProject.projectDir.path
+}
+
+tasks.named<JavaExec>("run") {
+    workingDir = rootProject.projectDir
 }
 
 dependencies {

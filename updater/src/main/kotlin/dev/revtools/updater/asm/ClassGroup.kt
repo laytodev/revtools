@@ -1,6 +1,6 @@
 package dev.revtools.updater.asm
 
-import dev.reimer.progressbar.ktx.progressBar
+import me.tongfei.progressbar.ConsoleProgressBarConsumer
 import me.tongfei.progressbar.ProgressBarBuilder
 import me.tongfei.progressbar.ProgressBarStyle
 import org.objectweb.asm.ClassReader
@@ -169,12 +169,13 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
         env.sharedGroup.getCreateClass("java/lang/Object")
 
         val progress = ProgressBarBuilder()
-            .setTaskName("Processing classes")
-            .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BLOCK)
+            .setTaskName("Initializing")
+            .setStyle(ProgressBarStyle.COLORFUL_UNICODE_BAR)
             .setInitialMax((classes.size * 3).toLong())
             .setUpdateIntervalMillis(10)
             .continuousUpdate()
-            .setMaxRenderedLength(120)
+            .setMaxRenderedLength(125)
+            .setConsumer(ConsoleProgressBarConsumer(System.out))
             .build()
 
         // Step A
@@ -339,6 +340,12 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
                         method.classRefs.add(dst)
                     }
                 }
+            }
+        }
+
+        cls.fields.forEach { field ->
+            if(field.writeRefs.size == 1) {
+                FieldAnalyzer.analyzeFieldInitializer(field)
             }
         }
     }

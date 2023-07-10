@@ -192,6 +192,11 @@ class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : M
     fun isInterface() = (access and ACC_INTERFACE) != 0
     fun isAbstract() = (access and ACC_ABSTRACT) != 0
 
+    fun isPrimitive(): Boolean {
+        val start = id[0]
+        return start != 'L' && start != '['
+    }
+
     override fun toString(): String {
         return name
     }

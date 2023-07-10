@@ -1,6 +1,7 @@
 package dev.revtools.updater.asm
 
 import org.objectweb.asm.Opcodes
+import org.objectweb.asm.tree.AbstractInsnNode
 import org.objectweb.asm.tree.FieldNode
 
 class FieldEntry(cls: ClassEntry, val node: FieldNode) : MemberEntry<FieldEntry>(cls) {
@@ -18,6 +19,8 @@ class FieldEntry(cls: ClassEntry, val node: FieldNode) : MemberEntry<FieldEntry>
 
     val readRefs = hashSetOf<MethodEntry>()
     val writeRefs = hashSetOf<MethodEntry>()
+
+    val initializer = mutableListOf<AbstractInsnNode>()
 
     fun isPrivate() = (access and Opcodes.ACC_PRIVATE) != 0
     fun isStatic() = (access and Opcodes.ACC_STATIC) != 0

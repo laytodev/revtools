@@ -337,6 +337,12 @@ object ClassifierUtil {
         return ret
     }
 
+    fun compareInsns(listA: List<AbstractInsnNode>, listB: List<AbstractInsnNode>): Double {
+        return compareLists(listA, listB, List<AbstractInsnNode>::get, List<AbstractInsnNode>::size) { insnA, insnB ->
+            compareInsns(insnA, insnB, listA, listB, { list, insn -> list.indexOf(insn) }, null, null)
+        }
+    }
+
     fun compareInsns(listA: InsnList, listB: InsnList, mthA: MethodEntry? = null, mthB: MethodEntry? = null): Double {
         return compareLists(listA, listB, InsnList::get, InsnList::size) { insnA, insnB ->
             compareInsns(insnA, insnB, listA, listB, { list, insn -> list.indexOf(insn) }, mthA, mthB)

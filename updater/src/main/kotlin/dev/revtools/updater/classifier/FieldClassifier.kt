@@ -10,12 +10,15 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
         addRanker(fieldType, 10)
         addRanker(accessFlags, 4)
         addRanker(type, 10)
+        addRanker(parentField, 10)
+        addRanker(childFields, 3)
         addRanker(writeRefs, 6)
         addRanker(readRefs, 6)
         addRanker(initValue, 7)
-        addRanker(initIndex, 10)
-        addRanker(writeRefsBci, 6)
-        addRanker(readRefsBci, 6)
+        addRanker(initIndex, 7)
+        addRanker(initCode, 12)
+        //addRanker(writeRefsBci, 6)
+        //addRanker(readRefsBci, 6)
     }
 
     private val fieldType = ranker("field type") { a, b ->
@@ -36,6 +39,14 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
         return@ranker if(ClassifierUtil.isMaybeEqual(a.type, b.type)) 1.0 else 0.0
     }
 
+    private val parentField = ranker("parent field") { a, b ->
+        return@ranker if(ClassifierUtil.isMaybeEqualNullable(a.parent, b.parent)) 1.0 else 0.0
+    }
+
+    private val childFields = ranker("child fields") { a, b ->
+        return@ranker ClassifierUtil.compareFieldSets(a.children, b.children)
+    }
+
     private val writeRefs = ranker("write refs") { a, b ->
         return@ranker ClassifierUtil.compareMethodSets(a.writeRefs, b.writeRefs)
     }
@@ -52,6 +63,16 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
         if(valueA == null || valueB == null) return@ranker 0.0
 
         return@ranker if(valueA == valueB) 1.0 else 0.0
+    }
+
+    private val initCode = ranker("init code") { a, b ->
+        val initA = a.initializer
+        val initB = b.initializer
+
+        if(initA.isEmpty() && initB.isEmpty()) return@ranker 1.0
+        if(initA.isEmpty() || initB.isEmpty()) return@ranker 0.0
+
+        return@ranker ClassifierUtil.compareInsns(initA, initB)
     }
 
     private val initIndex = ranker("init index") { a, b ->
