@@ -459,10 +459,10 @@ object Updater {
         run()
     }
 
-    private const val classAbsThreshold = 0.8
-    private const val classRelThreshold = 0.08
-    private const val methodAbsThreshold = 0.8
-    private const val methodRelThreshold = 0.08
-    private const val fieldAbsThreshold = 0.8
-    private const val fieldRelThreshold = 0.08
+    private const val classAbsThreshold = 0.75
+    private const val classRelThreshold = 0.075
+    private const val methodAbsThreshold = 0.75
+    private const val methodRelThreshold = 0.075
+    private const val fieldAbsThreshold = 0.75
+    private const val fieldRelThreshold = 0.075
 }

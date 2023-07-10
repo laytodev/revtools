@@ -31,14 +31,6 @@ val TaskContainer.downloadGamepack by tasks.registering {
     }
 }
 
-val TaskContainer.deobfuscateGamepack by tasks.register<GradleBuild>("deobfuscateGamepack") {
-    group = "revtools"
-    val exec = project(":deobfuscator").tasks.named<JavaExec>("run") {
-            args = listOf("gamepack.jar", "gamepack.deob.jar", "-t")
-    }.get()
-    dependsOn(exec)
-}
-
 fun downloadGamepack() {
     println("Downloading latest Old School RuneScape gamepack jar...")
 

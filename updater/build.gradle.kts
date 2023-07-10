@@ -1,3 +1,12 @@
+plugins {
+    application
+}
+
+application {
+    mainClass.set("dev.revtools.updater.Updater")
+    executableDir = rootProject.projectDir.path
+}
+
 dependencies {
     implementation("org.ow2.asm:asm:_")
     implementation("org.ow2.asm:asm-util:_")

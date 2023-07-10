@@ -48,6 +48,8 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
         register<MultipliersRemover>()
         register<DecompilerTrapRemover>()
         register<GetPathErrorFixer>()
+        register<BitShiftSimplifier>()
+        register<BitwiseOpSimplifier>()
         register<ControlFlowNormalizer>()
         register<RedundantGotoRemover>()
         register<DeadCodeRemover>()
