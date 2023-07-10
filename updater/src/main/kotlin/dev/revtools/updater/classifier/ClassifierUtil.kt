@@ -479,6 +479,16 @@ object ClassifierUtil {
         return isMaybeEqual(methodA, methodB)
     }
 
+    fun mapInsns(a: MethodEntry, b: MethodEntry): IntArray {
+        return mapInsns(a.instructions, b.instructions, a, b)
+    }
+
+    fun mapInsns(listA: InsnList, listB: InsnList, mthA: MethodEntry? = null, mthB: MethodEntry? = null): IntArray {
+        return mapLists(listA, listB, InsnList::get, InsnList::size) { insnA, insnB ->
+            compareInsns(insnA, insnB, listA, listB, { list, insn -> list.indexOf(insn) }, mthA, mthB)
+        }
+    }
+
     const val COMPARED_SIMILAR = 0
     const val COMPARED_POSSIBLE = 1
     const val COMPARED_DISTINCT = 2

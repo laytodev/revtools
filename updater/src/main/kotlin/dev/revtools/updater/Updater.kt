@@ -1,10 +1,7 @@
 package dev.revtools.updater
 
 import dev.revtools.updater.asm.*
-import dev.revtools.updater.classifier.ClassClassifier
-import dev.revtools.updater.classifier.ClassifierUtil
-import dev.revtools.updater.classifier.MethodClassifier
-import dev.revtools.updater.classifier.RankResult
+import dev.revtools.updater.classifier.*
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -21,6 +18,7 @@ object Updater {
         // Init all classifiers
         ClassClassifier.init()
         MethodClassifier.init()
+        FieldClassifier.init()
     }
 
     fun run() {
@@ -38,6 +36,7 @@ object Updater {
 
         do {
             matchedAny = autoMatchMemberMethods()
+            matchedAny = matchedAny or autoMatchMemberFields()
 
             if(!matchedAny && !matchedClassesBefore) {
                 break
@@ -49,6 +48,11 @@ object Updater {
 
         do {
             matchedAny = autoMatchStaticMethods()
+            matchedAny = matchedAny or autoMatchStaticFields()
+
+            matchedAny = matchedAny or autoMatchClasses()
+            matchedAny = matchedAny or autoMatchMemberMethods()
+            matchedAny = matchedAny or autoMatchMemberFields()
         } while(matchedAny)
 
         println("Completed matching.")
@@ -318,6 +322,90 @@ object Updater {
         return matches.isNotEmpty()
     }
 
+    fun autoMatchMemberFields(): Boolean {
+        println("Matching member methods...")
+
+        val totalUnmatched = AtomicInteger()
+
+        fun matchMemberFields(totalUnmatched: AtomicInteger): ConcurrentHashMap<FieldEntry, FieldEntry> {
+            val classes = env.groupA.classes.filter { it.hasMatch() && it.memberFields.isNotEmpty() }
+                .filter { it.memberFields.any { f -> !f.hasMatch() && f.isMatchable } }
+                .toList()
+            if(classes.isEmpty()) return ConcurrentHashMap()
+
+            val maxScore = FieldClassifier.maxScore
+            val maxMismatch = maxScore - getRawScore(fieldAbsThreshold * (1 - fieldRelThreshold), maxScore)
+            val ret = ConcurrentHashMap<FieldEntry, FieldEntry>()
+
+            classes.forEach { srcCls ->
+                var unmatched = 0
+                for(srcField in srcCls.memberFields) {
+                    if(srcField.hasMatch() || !srcField.isMatchable) continue
+                    val ranking = ClassifierUtil.rank(srcField, srcCls.match!!.memberFields.toList(), FieldClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
+                    if(checkRank(ranking, fieldAbsThreshold, fieldRelThreshold, maxScore)) {
+                        val match = ranking[0].subject
+                        ret[srcField] = match
+                    } else {
+                        unmatched++
+                    }
+                }
+                if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
+            }
+
+            reduceMatches(ret)
+            return ret
+        }
+
+        val matches = matchMemberFields(totalUnmatched)
+        matches.forEach { (src, dst) ->
+            match(src, dst)
+        }
+
+        println("Matched ${matches.size} member fields. (${totalUnmatched.get()} unmatched)")
+        return matches.isNotEmpty()
+    }
+
+    fun autoMatchStaticFields(): Boolean {
+        println("Matching static fields...")
+
+        val totalUnmatched = AtomicInteger()
+
+        fun matchStaticFields(totalUnmatched: AtomicInteger): ConcurrentHashMap<FieldEntry, FieldEntry> {
+            val srcFields = env.groupA.classes.flatMap { it.staticFields }
+                .filter { !it.hasMatch() && it.isMatchable }
+                .toList()
+
+            val maxScore = FieldClassifier.maxScore
+            val maxMismatch = maxScore - getRawScore(fieldAbsThreshold * (1 - fieldRelThreshold), maxScore)
+            val ret = ConcurrentHashMap<FieldEntry, FieldEntry>()
+
+            var unmatched = 0
+            for(srcField in srcFields) {
+                if(srcField.hasMatch() || !srcField.isMatchable) continue
+                val dstFields = env.groupB.classes.flatMap { it.staticFields }.filter { !it.hasMatch() }
+                val ranking = ClassifierUtil.rank(srcField, dstFields, FieldClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
+                if(checkRank(ranking, fieldAbsThreshold, fieldRelThreshold, maxScore)) {
+                    val match = ranking[0].subject
+                    ret[srcField] = match
+                } else {
+                    unmatched++
+                }
+            }
+            if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
+
+            reduceMatches(ret)
+            return ret
+        }
+
+        val matches = matchStaticFields(totalUnmatched)
+        matches.forEach { (src, dst) ->
+            match(src, dst)
+        }
+
+        println("Matched ${matches.size} static fields. (${totalUnmatched.get()} unmatched)")
+        return matches.isNotEmpty()
+    }
+
     private fun checkRank(ranking: List<RankResult<*>>, absThreshold: Double, relThreshold: Double, maxScore: Double): Boolean {
         if(ranking.isEmpty()) return false
 
@@ -375,4 +463,6 @@ object Updater {
     private const val classRelThreshold = 0.08
     private const val methodAbsThreshold = 0.8
     private const val methodRelThreshold = 0.08
+    private const val fieldAbsThreshold = 0.8
+    private const val fieldRelThreshold = 0.08
 }
