@@ -1,0 +1,10 @@
+dependencies {
+    implementation("org.ow2.asm:asm:_")
+    implementation("org.ow2.asm:asm-util:_")
+    implementation("org.ow2.asm:asm-commons:_")
+    implementation("org.ow2.asm:asm-tree:_")
+    implementation("com.google.guava:guava:_")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.52")
+    implementation("org.json:json:20220320")
+    implementation("com.github.lukfor:magic-progress:_")
+}
