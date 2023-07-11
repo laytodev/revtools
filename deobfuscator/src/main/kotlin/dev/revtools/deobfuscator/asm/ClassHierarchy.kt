@@ -35,11 +35,13 @@ class ClassHierarchy(group: ClassGroup) {
         private val cachedAllParents = hashSetOf<ClassTree>()
         private val cachedAllChildren = hashSetOf<ClassTree>()
 
-        fun getParents() = parents.map { it.className }
-        fun getChildren() = children.map { it.className }
+        val parentClasses: Set<String> get() {
+            return cachedAllParents.map { it.className }.toSet()
+        }
 
-        fun getAllParents() = cachedAllParents.map { it.className }
-        fun getAllChildren() = cachedAllChildren.map { it.className }
+        val childClasses: Set<String> get() {
+            return cachedAllChildren.map { it.className }.toSet()
+        }
 
         fun addParent(entry: ClassTree) {
             parents.add(entry)

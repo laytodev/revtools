@@ -23,32 +23,32 @@ class MultipliersRemover : Transformer {
     private var count = 0
 
     override fun run(group: ClassGroup) {
-        Logger.info("Computing field multipliers decryption keys...")
-        
-        val multipliers = MultiplierSolver(group).computeDecoders()
-        val decoders = multipliers.associatedFieldMultipliers.mapKeys { it.key }.mapValues { it.value.toLong() }
-        
-        group.classes.forEach { cls ->
-            cls.methods.forEach { method ->
-                method.maxStack += 2
-                method.decryptMultipliers(decoders)
-                method.simplifyMultiplyExpression()
-                method.maxStack -= 2
+        Logger.info("Calculating multiplier decoder values...")
+
+        val multipliers = EuclideanMultipliers(group).calculateDecoders()
+        val decoders = multipliers.decoders.mapKeys { it.key }.mapValues { it.value.toLong() }
+
+        group.classes.forEach { c ->
+            c.methods.forEach { m ->
+                m.maxStack += 2
+                m.cancelOutMultipliers(decoders)
+                m.solveConstantMath()
+                m.maxStack -= 2
             }
         }
 
-        Logger.info("Removing field multipliers with solved decryption keys..")
-
-        group.classes.forEach { cls ->
-            cls.methods.forEach { method ->
-                val insns = method.instructions.iterator()
+        group.classes.forEach { c ->
+            c.methods.forEach { m ->
+                val insns = m.instructions.iterator()
                 while(insns.hasNext()) {
                     val insn = insns.next()
                     if(insn is LdcInsnNode) {
-                        if(insn.next.opcode == IMUL && insn.next.next.opcode == LDC && insn.next.next.next.opcode == IMUL) {
-                            val factorA = insn.ldcNum!!
-                            val factorB = (insn.next.next as LdcInsnNode).ldcNum!!
-                            val product = factorA * factorB
+                        if(insn.next.opcode == IMUL &&
+                            insn.next.next.opcode == LDC &&
+                            insn.next.next.next.opcode == IMUL) {
+                            val ldc1 = insn.ldcNum!!
+                            val ldc2 = (insn.next.next as LdcInsnNode).ldcNum!!
+                            val product = ldc1 * ldc2
                             if(product == 1) {
                                 insns.remove()
                                 repeat(3) {
@@ -63,10 +63,10 @@ class MultipliersRemover : Transformer {
             }
         }
 
-        Logger.info("Removed total of $count field multipliers.")
+        Logger.info("Removed $count constant multipliers.")
     }
 
-    private fun MethodNode.decryptMultipliers(decoders: Map<String, Long>) {
+    private fun MethodNode.cancelOutMultipliers(decoders: Map<String, Long>) {
         val insnList = instructions
         for (insn in insnList.iterator()) {
             if (insn !is FieldInsnNode) continue
@@ -78,11 +78,11 @@ class MultipliersRemover : Transformer {
                     when (insn.desc) {
                         INT_TYPE.descriptor -> {
                             when (insn.next.opcode) {
-                                I2L -> insnList.append(insn.next, LdcInsnNode(ModMath.invert(decoder)), InsnNode(LMUL))
-                                else -> insnList.append(insn, LdcInsnNode(ModMath.invert(decoder.toInt())), InsnNode(IMUL))
+                                I2L -> insnList.append(insn.next, LdcInsnNode(Inversion.invert(decoder)), InsnNode(LMUL))
+                                else -> insnList.append(insn, LdcInsnNode(Inversion.invert(decoder.toInt())), InsnNode(IMUL))
                             }
                         }
-                        LONG_TYPE.descriptor -> insnList.append(insn, LdcInsnNode(ModMath.invert(decoder)), InsnNode(LMUL))
+                        LONG_TYPE.descriptor -> insnList.append(insn, LdcInsnNode(Inversion.invert(decoder)), InsnNode(LMUL))
                         else -> error(insn)
                     }
                     count++
@@ -93,7 +93,7 @@ class MultipliersRemover : Transformer {
                             when (insn.previous.opcode) {
                                 DUP_X1 -> {
                                     insnList.prepend(insn.previous, LdcInsnNode(decoder.toInt()), InsnNode(IMUL))
-                                    insnList.append(insn, LdcInsnNode(ModMath.invert(decoder.toInt())), InsnNode(IMUL))
+                                    insnList.append(insn, LdcInsnNode(Inversion.invert(decoder.toInt())), InsnNode(IMUL))
                                 }
                                 DUP, DUP_X2, DUP2, DUP2_X1, DUP2_X2 -> error(insn)
                                 else -> insnList.prepend(insn, LdcInsnNode(decoder.toInt()), InsnNode(IMUL))
@@ -103,7 +103,7 @@ class MultipliersRemover : Transformer {
                             when (insn.previous.opcode) {
                                 DUP2_X1 -> {
                                     insnList.prepend(insn.previous, LdcInsnNode(decoder), InsnNode(LMUL))
-                                    insnList.append(insn, LdcInsnNode(ModMath.invert(decoder)), InsnNode(LMUL))
+                                    insnList.append(insn, LdcInsnNode(Inversion.invert(decoder)), InsnNode(LMUL))
                                 }
                                 DUP, DUP_X1, DUP_X2, DUP2, DUP2_X2 -> error(insn)
                                 else -> insnList.prepend(insn, LdcInsnNode(decoder), InsnNode(LMUL))
@@ -119,7 +119,7 @@ class MultipliersRemover : Transformer {
                             when (insn.previous.opcode) {
                                 DUP -> {
                                     insnList.prepend(insn.previous, LdcInsnNode(decoder.toInt()), InsnNode(IMUL))
-                                    insnList.append(insn, LdcInsnNode(ModMath.invert(decoder.toInt())), InsnNode(IMUL))
+                                    insnList.append(insn, LdcInsnNode(Inversion.invert(decoder.toInt())), InsnNode(IMUL))
                                 }
                                 DUP_X1, DUP_X2, DUP2, DUP2_X1, DUP2_X2 -> error(insn)
                                 else -> insnList.prepend(insn, LdcInsnNode(decoder.toInt()), InsnNode(IMUL))
@@ -129,7 +129,7 @@ class MultipliersRemover : Transformer {
                             when (insn.previous.opcode) {
                                 DUP2 -> {
                                     insnList.prepend(insn.previous, LdcInsnNode(decoder), InsnNode(LMUL))
-                                    insnList.append(insn, LdcInsnNode(ModMath.invert(decoder)), InsnNode(LMUL))
+                                    insnList.append(insn, LdcInsnNode(Inversion.invert(decoder)), InsnNode(LMUL))
                                 }
                                 DUP, DUP_X1, DUP_X2, DUP2_X1, DUP2_X2 -> error(insn)
                                 else -> insnList.prepend(insn, LdcInsnNode(decoder), InsnNode(LMUL))
@@ -143,12 +143,12 @@ class MultipliersRemover : Transformer {
         }
     }
 
-    private fun isMultiplier(n: Number) = ModMath.isInvertible(n) && ModMath.invert(n) != n
+    private fun isMultiplier(n: Number) = Inversion.isInvertible(n) && Inversion.invert(n) != n
     private val LdcInsnNode.ldcNum: Int? get() = if(this.cst is Int) this.cst as Int else null
 
-    private fun MethodNode.simplifyMultiplyExpression() {
+    private fun MethodNode.solveConstantMath() {
         val insnList = instructions
-        val interpreter = MultiplierExprInterpreter()
+        val interpreter = Inter()
         val analyzer = Analyzer(interpreter)
         analyzer.analyze(owner.name, this)
         for (mul in interpreter.constantMultiplications) {
@@ -220,7 +220,7 @@ class MultipliersRemover : Transformer {
         }
     }
 
-    private class MultiplierExprInterpreter : Interpreter<Expr>(ASM6) {
+    private class Inter : Interpreter<Expr>(ASM6) {
 
         private val sourceInterpreter = SourceInterpreter()
 
@@ -366,91 +366,91 @@ class MultipliersRemover : Transformer {
         }
     }
 
-    private class MultiplierSolver(private val group: ClassGroup) {
+    private class EuclideanMultipliers(private val group: ClassGroup) {
 
-        fun computeDecoders(): Multipliers {
+        fun calculateDecoders(): Multipliers {
             val multipliers = Multipliers()
-            val analyzer = Analyzer(MultiplierInterpreter(multipliers))
+            val analyzer = Analyzer(Interpret(multipliers))
 
-            group.classes.forEach { cls ->
-                cls.methods.forEach { method ->
-                    analyzer.analyze(method.owner.name, method)
+            group.classes.forEach { c ->
+                c.methods.forEach { m ->
+                    analyzer.analyze(m.owner.name, m)
                 }
             }
-            
+
             multipliers.solve()
-            
+
             return multipliers
         }
 
-        private class MultiplierInterpreter(private val multipliers: Multipliers) : Interpreter<MultExpr>(ASM9) {
+        private class Interpret(private val multipliers: Multipliers) : Interpreter<Valu>(ASM9) {
 
-            private val ldcs = HashSet<MultExpr>()
+            private val ldcs = HashSet<Valu>()
 
-            private val ldcs2 = HashSet<MultExpr>()
+            private val ldcs2 = HashSet<Valu>()
 
-            private val puts = HashMap<MultExpr, MultExpr>()
+            private val puts = HashMap<Valu, Valu>()
 
             private val src = SourceInterpreter()
 
-            override fun newValue(type: Type?) = src.newValue(type)?.let { MultExpr(it) }
+            override fun newValue(type: Type?) = src.newValue(type)?.let { Valu(it) }
 
-            override fun copyOperation(insn: AbstractInsnNode, value: MultExpr) = when (insn.opcode) {
+            override fun copyOperation(insn: AbstractInsnNode, value: Valu) = when (insn.opcode) {
                 DUP, DUP2, DUP2_X1, DUP_X1 -> value
-                else -> MultExpr(src.copyOperation(insn, value.srcValue))
+                else -> Valu(src.copyOperation(insn, value.v))
             }
 
-            override fun merge(value1: MultExpr, value2: MultExpr) = MultExpr(src.merge(value1.srcValue, value2.srcValue))
+            override fun merge(value1: Valu, value2: Valu) = Valu(src.merge(value1.v, value2.v))
 
-            override fun returnOperation(insn: AbstractInsnNode, value: MultExpr, expected: MultExpr) {}
+            override fun returnOperation(insn: AbstractInsnNode, value: Valu, expected: Valu) {}
 
-            override fun ternaryOperation(insn: AbstractInsnNode, value1: MultExpr, value2: MultExpr, value3: MultExpr) = MultExpr(src.ternaryOperation(insn, value1.srcValue, value2.srcValue, value3.srcValue))
+            override fun ternaryOperation(insn: AbstractInsnNode, value1: Valu, value2: Valu, value3: Valu) = Valu(src.ternaryOperation(insn, value1.v, value2.v, value3.v))
 
-            override fun naryOperation(insn: AbstractInsnNode, values: MutableList<out MultExpr>) = MultExpr(src.naryOperation(insn, values.map { it.srcValue }))
+            override fun naryOperation(insn: AbstractInsnNode, values: MutableList<out Valu>) = Valu(src.naryOperation(insn, values.map { it.v }))
 
-            override fun newOperation(insn: AbstractInsnNode) = MultExpr(src.newOperation(insn))
+            override fun newOperation(insn: AbstractInsnNode) = Valu(src.newOperation(insn))
 
-            override fun unaryOperation(insn: AbstractInsnNode, value: MultExpr) = MultExpr(src.unaryOperation(insn, value.srcValue)).also {
+            override fun unaryOperation(insn: AbstractInsnNode, value: Valu) = Valu(src.unaryOperation(insn, value.v)).also {
                 if (insn.opcode == PUTSTATIC) setField(it, value)
             }
 
-            override fun binaryOperation(insn: AbstractInsnNode, value1: MultExpr, value2: MultExpr) = MultExpr.Binary(src.binaryOperation(insn, value1.srcValue, value2.srcValue), value1, value2).also {
+            override fun binaryOperation(insn: AbstractInsnNode, value1: Valu, value2: Valu) = Valu.Two(src.binaryOperation(insn, value1.v, value2.v), value1, value2).also {
                 when (insn.opcode) {
                     IMUL, LMUL -> {
                         val fieldMul = asFieldMul(it) ?: return@also
                         if (ldcs.add(fieldMul.ldc)) {
-                            multipliers.unsolvedMultipliers.put(fieldMul.f.fieldName, Multiplier.decoder(fieldMul.ldc.ldcNum))
+                            multipliers.mulX.put(fieldMul.f.fieldName, Mul.dec(fieldMul.ldc.ldcNum))
                         }
                     }
                     PUTFIELD -> setField(it, value2)
                 }
             }
 
-            private fun isMultiplier(n: Number) = ModMath.isInvertible(n) && ModMath.invert(n) != n
+            private fun isMultiplier(n: Number) = Inversion.isInvertible(n) && Inversion.invert(n) != n
 
-            private fun setField(put: MultExpr, value: MultExpr) {
+            private fun setField(put: Valu, value: Valu) {
                 puts[value] = put
                 if (value.isLdcInt) {
                     //
-                } else if (value is MultExpr.Binary) {
-                    distribute(put.srcValue.insn as FieldInsnNode, value)
+                } else if (value is Valu.Two) {
+                    distribute(put.v.insn as FieldInsnNode, value)
                 }
             }
 
-            private fun distribute(put: FieldInsnNode, value: MultExpr.Binary) {
+            private fun distribute(put: FieldInsnNode, value: Valu.Two) {
                 if (value.isMul) {
                     val fm = asFieldMul(value)
                     if (fm != null && ldcs2.add(fm.ldc)) {
-                        check(multipliers.unsolvedMultipliers.remove(fm.f.fieldName, Multiplier.decoder(fm.ldc.ldcNum)))
-                        multipliers.solvedMultipliers.add(SolvedMultiplier(put.fieldName, fm.f.fieldName, fm.ldc.ldcNum))
+                        check(multipliers.mulX.remove(fm.f.fieldName, Mul.dec(fm.ldc.ldcNum)))
+                        multipliers.decEncX.add(FieldMulAssign(put.fieldName, fm.f.fieldName, fm.ldc.ldcNum))
                         return
                     }
                 }
                 if (!value.isMul && !value.isAdd) return
-                val a = value.left
-                val b = value.right
-                var ldc: MultExpr? = null
-                var other: MultExpr? = null
+                val a = value.a
+                val b = value.b
+                var ldc: Valu? = null
+                var other: Valu? = null
                 if (a.isLdcInt) {
                     ldc = a
                     other = b
@@ -463,26 +463,26 @@ class MultipliersRemover : Transformer {
                     if (isMultiplier(n) && ldcs.add(ldc)) {
                         val getField = puts[other]
                         if (getField == null) {
-                            multipliers.unsolvedMultipliers.put(put.fieldName, Multiplier.encoder(n))
+                            multipliers.mulX.put(put.fieldName, Mul.enc(n))
                         } else {
-                            multipliers.solvedMultipliers.add(SolvedMultiplier(put.fieldName, getField.fieldName, n))
+                            multipliers.decEncX.add(FieldMulAssign(put.fieldName, getField.fieldName, n))
                         }
                     }
                     if (value.isMul) return
                 }
-                if (a is MultExpr.Binary) distribute(put, a)
-                if (b is MultExpr.Binary) distribute(put, b)
+                if (a is Valu.Two) distribute(put, a)
+                if (b is Valu.Two) distribute(put, b)
             }
 
-            private fun asFieldMul(value: MultExpr.Binary): FieldMul? {
-                var ldc: MultExpr? = null
-                var get: MultExpr? = null
-                if (value.left.isLdcInt && value.right.isGetField) {
-                    ldc = value.left
-                    get = value.right
-                } else if (value.right.isLdcInt && value.left.isGetField) {
-                    ldc = value.right
-                    get = value.left
+            private fun asFieldMul(value: Valu.Two): FieldMul? {
+                var ldc: Valu? = null
+                var get: Valu? = null
+                if (value.a.isLdcInt && value.b.isGetField) {
+                    ldc = value.a
+                    get = value.b
+                } else if (value.b.isLdcInt && value.a.isGetField) {
+                    ldc = value.b
+                    get = value.a
                 }
                 if (ldc != null && get != null) {
                     if (isMultiplier(ldc.ldcNum)) return FieldMul(get, ldc)
@@ -490,126 +490,122 @@ class MultipliersRemover : Transformer {
                 return null
             }
 
-            private val MultExpr.isLdcInt get() = srcValue.insn.let { it != null && it is LdcInsnNode && (it.cst is Int || it.cst is Long) }
+            private val Valu.isLdcInt get() = v.insn.let { it != null && it is LdcInsnNode && (it.cst is Int || it.cst is Long) }
 
             private val SourceValue.insn: AbstractInsnNode? get() = insns.singleOrNull()
 
-            private val MultExpr.isGetField get() = srcValue.insn.let { it != null && (it.opcode == GETSTATIC || it.opcode == GETFIELD) }
+            private val Valu.isGetField get() = v.insn.let { it != null && (it.opcode == GETSTATIC || it.opcode == GETFIELD) }
 
-            private val MultExpr.ldcNum get() = srcValue.insns.single().let { it as LdcInsnNode; it.cst as Number }
+            private val Valu.ldcNum get() = v.insns.single().let { it as LdcInsnNode; it.cst as Number }
 
             private val FieldInsnNode.fieldName get() = "${owner}.${name}"
 
-            private val MultExpr.fieldName get() = srcValue.insns.single().let { it as FieldInsnNode; it.fieldName }
+            private val Valu.fieldName get() = v.insns.single().let { it as FieldInsnNode; it.fieldName }
 
-            private val MultExpr.isMul get() = srcValue.insn.let { it != null && (it.opcode == IMUL || it.opcode == LMUL) }
+            private val Valu.isMul get() = v.insn.let { it != null && (it.opcode == IMUL || it.opcode == LMUL) }
 
-            private val MultExpr.isAdd get() = srcValue.insn.let { it != null && (it.opcode == IADD || it.opcode == LADD || it.opcode == ISUB || it.opcode == LSUB) }
+            private val Valu.isAdd get() = v.insn.let { it != null && (it.opcode == IADD || it.opcode == LADD || it.opcode == ISUB || it.opcode == LSUB) }
 
-            private data class FieldMul(val f: MultExpr, val ldc: MultExpr)
-            private data class LdcMul(val ldcA: MultExpr, val ldcB: MultExpr)
+            private data class FieldMul(val f: Valu, val ldc: Valu)
+            private data class LdcMul(val ldcA: Valu, val ldcB: Valu)
         }
 
-        private open class MultExpr(val srcValue: SourceValue) : Value {
+        private open class Valu(val v: SourceValue) : Value {
 
-            override fun equals(other: Any?) = other is MultExpr && srcValue == other.srcValue
+            override fun equals(other: Any?) = other is Valu && v == other.v
 
-            override fun hashCode() = srcValue.hashCode()
+            override fun hashCode() = v.hashCode()
 
-            override fun getSize() = srcValue.size
+            override fun getSize() = v.size
 
-            class Binary(value: SourceValue, val left: MultExpr, val right: MultExpr) : MultExpr(value)
+            class Two(value: SourceValue, val a: Valu, val b: Valu) : Valu(value)
         }
 
-        private data class Multiplier(val isDecoder: Boolean, val number: Number) {
+        private data class Mul(val dec: Boolean, val n: Number) {
 
-            val inverseNumber = if (isDecoder) number else ModMath.invert(number)
+            val decoder = if (dec) n else Inversion.invert(n)
 
             companion object {
-                fun decoder(n: Number) = Multiplier(true, n)
-                fun encoder(n: Number) = Multiplier(false, n)
+
+                fun dec(n: Number) = Mul(true, n)
+
+                fun enc(n: Number) = Mul(false, n)
             }
         }
 
-        private data class SolvedMultiplier(val putter: String, val getter: String, val number: Number)
+        private data class FieldMulAssign(val put: String, val get: String, val mul: Number)
 
         class Multipliers {
-            
-            val associatedFieldMultipliers = HashMap<String, Number>()
-            val unsolvedMultipliers = MultimapBuilder.hashKeys().arrayListValues().build<String, Multiplier>()
-            val solvedMultipliers = HashSet<SolvedMultiplier>()
+
+            val decoders = HashMap<String, Number>()
+
+            val mulX = MultimapBuilder.hashKeys().arrayListValues().build<String, Mul>()
+
+            val decEncX = HashSet<FieldMulAssign>()
 
             fun solve() {
                 while (true) {
                     simplify()
-                    if (unsolvedMultipliers.isEmpty) return
+                    if (mulX.isEmpty) return
                     solveOne()
                 }
             }
 
-            private fun isMultiplier(n: Number) = ModMath.isInvertible(n) && ModMath.invert(n) != n
+            private fun isMultiplier(n: Number) = Inversion.isInvertible(n) && Inversion.invert(n) != n
 
             private fun simplify() {
-                val itr = solvedMultipliers.iterator()
+                val itr = decEncX.iterator()
                 for (ma in itr) {
-                    if (ma.putter in associatedFieldMultipliers) {
+                    if (ma.put in decoders) {
                         itr.remove()
-                        val dec = associatedFieldMultipliers.getValue(ma.putter)
-                        val decx = mul(dec, ma.number)
-                        if (isMultiplier(decx)) unsolvedMultipliers.put(ma.getter, Multiplier.decoder(decx))
-                    } else if (ma.getter in associatedFieldMultipliers) {
+                        val dec = decoders.getValue(ma.put)
+                        val decx = mul(dec, ma.mul)
+                        if (isMultiplier(decx)) mulX.put(ma.get, Mul.dec(decx))
+                    } else if (ma.get in decoders) {
                         itr.remove()
-                        val enc = ModMath.invert(associatedFieldMultipliers.getValue(ma.getter))
-                        val encx = mul(enc, ma.number)
-                        if (isMultiplier(encx)) unsolvedMultipliers.put(ma.putter, Multiplier.encoder(encx))
+                        val enc = Inversion.invert(decoders.getValue(ma.get))
+                        val encx = mul(enc, ma.mul)
+                        if (isMultiplier(encx)) mulX.put(ma.put, Mul.enc(encx))
                     }
                 }
             }
 
             private fun solveOne() {
-                var e = unsolvedMultipliers.asMap().entries.firstOrNull { e -> solvedMultipliers.none { it.getter == e.key || it.putter == e.key } }
-                if (e == null) e = unsolvedMultipliers.asMap().entries.first()
+                var e = mulX.asMap().entries.firstOrNull { e -> decEncX.none { it.get == e.key || it.put == e.key } }
+                if (e == null) e = mulX.asMap().entries.first()
                 val (f, ms) = e
                 val unfoldedNumber = unfold(ms)
                 if(unfoldedNumber == Int.MAX_VALUE) {
-                    Logger.warn("Failed to calculate multiplier decoder value. Field: $f, Multipliers: ${e.value.joinToString(", ") { it.number.toString() + ":" + it.inverseNumber }}.")
-                    unsolvedMultipliers.removeAll(f)
+                    Logger.warn("Failed to calculate multiplier decoder value. Field: $f, Multipliers: ${e.value.joinToString(", ") { it.n.toString() + ":" + it.decoder }}.")
+                    mulX.removeAll(f)
                 } else {
-                    associatedFieldMultipliers[f] = unfold(ms)
-                    unsolvedMultipliers.removeAll(f)
+                    decoders[f] = unfold(ms)
+                    mulX.removeAll(f)
                 }
             }
 
-            private fun unfold(multipliers: Collection<Multiplier>): Number {
-                val mults = multipliers.distinct()
-                if (mults.size == 1) return mults.single().inverseNumber
-                val pairedMults = mults.filter { mul -> mul.isDecoder && mults.any { b -> !b.isDecoder && mul.inverseNumber == b.inverseNumber } }
-                if (pairedMults.isNotEmpty()) return pairedMults.single().inverseNumber
-                val fs = mults.filter { f -> mults.all { isFactor(it, f) } }
-                if (fs.size == 1) return fs.single().inverseNumber
+            private fun unfold(ms: Collection<Mul>): Number {
+                val distinct = ms.distinct()
+                if (distinct.size == 1) return distinct.single().decoder
+                val pairs = distinct.filter { a -> a.dec && distinct.any { b -> !b.dec && a.decoder == b.decoder } }
+                if (pairs.isNotEmpty()) return pairs.single().decoder
+                val fs = distinct.filter { f -> distinct.all { isFactor(it, f) } }
+                if (fs.size == 1) return fs.single().decoder
                 if(fs.isEmpty()) {
-                    mults.forEach { mul ->
-                        /*
-                         * Really something should be done here in the event that unfolding fails.
-                         * This can happen if the multiplier has 2+ folded values and one being an even.
-                         *
-                         * In theory heuristics could be used to find likely factors given known constants in the client.
-                         * But fuck it. it's not breaking shit right now.
-                         *
-                         * @author Layto <laytodev>
-                         */
+                    distinct.forEach { mul ->
+
                     }
                 }
-                return fs.first { it.isDecoder }.inverseNumber
+                return fs.first { it.dec }.decoder
             }
 
-            private fun isFactor(product: Multiplier, factor: Multiplier) = div(product, factor).toLong().absoluteValue <= 0xff
+            private fun isFactor(product: Mul, factor: Mul) = div(product, factor).toLong().absoluteValue <= 0xff
 
-            private fun div(a: Multiplier, b: Multiplier): Number {
-                return if (a.isDecoder == b.isDecoder) {
-                    mul(ModMath.invert(b.number), a.number)
+            private fun div(a: Mul, b: Mul): Number {
+                return if (a.dec == b.dec) {
+                    mul(Inversion.invert(b.n), a.n)
                 } else {
-                    mul(b.number, a.number)
+                    mul(b.n, a.n)
                 }
             }
 
@@ -621,13 +617,14 @@ class MultipliersRemover : Transformer {
         }
     }
 
-    object ModMath {
+    object Inversion {
 
-        private val INT_MODULUS = BigInteger.ONE.shiftLeft(32)
-        private val LONG_MODULUS = BigInteger.ONE.shiftLeft(64)
+        private val SHIFT_32 = BigInteger.ONE.shiftLeft(32)
+        private val SHIFT_64 = BigInteger.ONE.shiftLeft(64)
 
-        fun invert(n: Int): Int = n.toBigInteger().modInverse(INT_MODULUS).toInt()
-        fun invert(n: Long): Long = n.toBigInteger().modInverse(LONG_MODULUS).toLong()
+        fun invert(n: Int): Int = n.toBigInteger().modInverse(SHIFT_32).toInt()
+
+        fun invert(n: Long): Long = n.toBigInteger().modInverse(SHIFT_64).toLong()
 
         fun invert(n: Number): Number {
             return when (n) {
@@ -638,6 +635,7 @@ class MultipliersRemover : Transformer {
         }
 
         fun isInvertible(n: Int): Boolean = n and 1 == 1
+
         fun isInvertible(n: Long): Boolean = isInvertible(n.toInt())
 
         fun isInvertible(n: Number): Boolean {

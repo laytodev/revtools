@@ -4,11 +4,17 @@ import dev.revtools.updater.asm.*
 import dev.revtools.updater.classifier.*
 import me.tongfei.progressbar.ProgressBarBuilder
 import me.tongfei.progressbar.ProgressBarStyle
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.SimpleRemapper
+import org.objectweb.asm.tree.ClassNode
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import kotlin.math.sqrt
 import kotlin.streams.toList
 
@@ -45,7 +51,7 @@ object Updater {
         } while(matchedAny)
     }
 
-    fun run() {
+    fun execute() {
         println("Starting matching.")
 
         /*
@@ -147,6 +153,55 @@ object Updater {
     }
 
     fun save(file: File) {
+        println("Saving and remapping jarB classes to output jar: ${file.path}")
+
+        /*
+         * Apply matching names to all entries.
+         */
+        val group = env.groupB
+        val mappings = hashMapOf<String, String>()
+        val hierarchy = ClassHierarchy(group)
+        
+        group.classes.forEach { cls ->
+            if(cls.hasMatch()) {
+                var name = cls.match!!.name
+                //if(name.isObfuscatedName()) { name = cls.name }
+                mappings[cls.name] = name
+            }
+        }
+
+        group.classes.forEach { cls ->
+            cls.methods.filter { it.hasMatch() }.forEach methodLoop@ { method ->
+                var key = "${method.cls.name}.${method.name}${method.desc}"
+                if(mappings.containsKey(key)) return@methodLoop
+                val name = method.match!!.name
+                mappings[key] = name
+                hierarchy[method.cls.name]!!.getAllParents().forEach { child ->
+                    mappings["$child.${method.name}${method.desc}"] = name
+                }
+            }
+        }
+
+        val remapper = SimpleRemapper(mappings)
+        val newClasses = mutableListOf<ClassNode>()
+        group.classes.map { it.node }.forEach { cls ->
+            val node = ClassNode()
+            cls.accept(ClassRemapper(node, remapper))
+            newClasses.add(node)
+        }
+
+        if(file.exists()) file.deleteRecursively()
+        JarOutputStream(file.outputStream()).use { jos ->
+            newClasses.forEach { cls ->
+                val writer = SuperAwareClassWriter(newClasses)
+                cls.accept(writer)
+                jos.putNextEntry(JarEntry(cls.name+".class"))
+                jos.write(writer.toByteArray())
+                jos.closeEntry()
+            }
+        }
+
+        println("Successfully remapped and saved ${newClasses.size} classes to output jar.")
     }
 
     private fun matchUnobfuscated() {
@@ -561,18 +616,18 @@ object Updater {
         val outputJar = File(args[2])
 
         init(jarA, jarB)
-        run()
+        execute()
+        save(outputJar)
 
-        //save(outputJar)
-        //TestClient(outputJar).start()
+        TestClient(outputJar).start()
     }
 
     private val threadPool = Executors.newWorkStealingPool()
 
-    private const val classAbsThreshold = 0.7
-    private const val classRelThreshold = 0.07
-    private const val methodAbsThreshold = 0.7
-    private const val methodRelThreshold = 0.07
-    private const val fieldAbsThreshold = 0.7
-    private const val fieldRelThreshold = 0.07
+    private const val classAbsThreshold = 0.8
+    private const val classRelThreshold = 0.08
+    private const val methodAbsThreshold = 0.8
+    private const val methodRelThreshold = 0.08
+    private const val fieldAbsThreshold = 0.8
+    private const val fieldRelThreshold = 0.08
 }

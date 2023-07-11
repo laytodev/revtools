@@ -1,14 +1,11 @@
-package dev.revtools.updater.remap
-
-import dev.revtools.updater.asm.ClassGroup
+package dev.revtools.updater.asm
 
 class ClassHierarchy(group: ClassGroup) {
 
     private val classTrees = hashMapOf<String, ClassTree>()
 
     init {
-        group.classes.forEach {
-            val cls = it.node
+        group.classes.map { it.node }.forEach { cls ->
             val tree = classTrees.computeIfAbsent(cls.name) { ClassTree(cls.name) }
             if(cls.superName != null) {
                 val superTree = classTrees.computeIfAbsent(cls.superName) { ClassTree(cls.superName) }
