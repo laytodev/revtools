@@ -1,5 +1,6 @@
 package dev.revtools.updater.asm
 
+import dev.revtools.updater.classifier.ClassifierUtil
 import me.tongfei.progressbar.ConsoleProgressBarConsumer
 import me.tongfei.progressbar.ProgressBarBuilder
 import me.tongfei.progressbar.ProgressBarStyle
@@ -201,14 +202,21 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
     private fun processA(cls: ClassEntry) {
         val cn = cls.node
 
+        val strings = cls.strings
+
         cn.methods.forEach { mn ->
             val method = MethodEntry(cls, mn)
             cls.addMethod(method)
+            ClassifierUtil.extractStrings(method.instructions, strings)
         }
 
         cn.fields.forEach { fn ->
             val field = FieldEntry(cls, fn)
             cls.addField(field)
+
+            if(field.value is String) {
+                strings.add(field.value)
+            }
         }
 
         if(cls.outerClass == null) processOuterClass(cls)

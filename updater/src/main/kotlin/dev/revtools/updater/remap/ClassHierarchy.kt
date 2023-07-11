@@ -1,13 +1,14 @@
-package dev.revtools.deobfuscator.asm
+package dev.revtools.updater.remap
 
-import dev.revtools.deobfuscator.asm.tree.ClassGroup
+import dev.revtools.updater.asm.ClassGroup
 
 class ClassHierarchy(group: ClassGroup) {
 
     private val classTrees = hashMapOf<String, ClassTree>()
 
     init {
-        group.classes.forEach { cls ->
+        group.classes.forEach {
+            val cls = it.node
             val tree = classTrees.computeIfAbsent(cls.name) { ClassTree(cls.name) }
             if(cls.superName != null) {
                 val superTree = classTrees.computeIfAbsent(cls.superName) { ClassTree(cls.superName) }

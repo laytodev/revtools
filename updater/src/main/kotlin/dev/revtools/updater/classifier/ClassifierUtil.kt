@@ -12,6 +12,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.Comparator
+import kotlin.collections.HashSet
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -510,6 +511,35 @@ object ClassifierUtil {
             }
         }
     }
+
+    fun extractNumbers(insns: InsnList, numbers: Numbers) {
+        val it = insns.iterator()
+        while(it.hasNext()) {
+            val insn = it.next()
+            if(insn is LdcInsnNode) {
+                handleNumberValue(insn.cst, numbers)
+            } else if(insn is IntInsnNode) {
+                numbers.ints.add(insn.operand)
+            }
+        }
+    }
+
+    fun handleNumberValue(number: Any?, numbers: Numbers) {
+        if(number == null) return
+        when(number) {
+            is Int -> numbers.ints.add(number)
+            is Long -> numbers.longs.add(number)
+            is Float -> numbers.floats.add(number)
+            is Double -> numbers.doubles.add(number)
+        }
+    }
+
+    data class Numbers(
+        val ints: HashSet<Int> = hashSetOf(),
+        val longs: HashSet<Long> = hashSetOf(),
+        val floats: HashSet<Float> = hashSetOf(),
+        val doubles: HashSet<Double> = hashSetOf()
+    )
 
     const val COMPARED_SIMILAR = 0
     const val COMPARED_POSSIBLE = 1

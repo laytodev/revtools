@@ -24,6 +24,8 @@ object ClassClassifier : AbstractClassifier<ClassEntry>() {
         addRanker(staticFieldCount, 3)
         addRanker(outRefs, 6)
         addRanker(inRefs, 6)
+        addRanker(stringConstants, 8)
+        addRanker(numberConstants, 6)
         addRanker(methodOutRefs, 5)
         addRanker(methodInRefs, 6)
         addRanker(fieldWriteRefs, 5)
@@ -212,5 +214,31 @@ object ClassClassifier : AbstractClassifier<ClassEntry>() {
         }
 
         return@ranker ClassifierUtil.compareFieldLists(fieldsA, fieldsB)
+    }
+
+    private val stringConstants = ranker("string constants") { a, b ->
+        return@ranker ClassifierUtil.compareSets(a.strings, b.strings)
+    }
+
+    private val numberConstants = ranker("number constants") { a, b ->
+        val numbersA = ClassifierUtil.Numbers()
+        val numbersB = ClassifierUtil.Numbers()
+
+        a.extractNumbers(numbersA)
+        b.extractNumbers(numbersB)
+
+        return@ranker (ClassifierUtil.compareSets(numbersA.ints, numbersB.ints)
+            + ClassifierUtil.compareSets(numbersA.longs, numbersB.longs)
+            + ClassifierUtil.compareSets(numbersA.floats, numbersB.floats)
+            + ClassifierUtil.compareSets(numbersA.doubles, numbersB.doubles)) / 4
+    }
+
+    private fun ClassEntry.extractNumbers(numbers: ClassifierUtil.Numbers) {
+        methods.forEach { method ->
+            ClassifierUtil.extractNumbers(method.instructions, numbers)
+        }
+        fields.forEach { field ->
+            ClassifierUtil.handleNumberValue(field.value, numbers)
+        }
     }
 }

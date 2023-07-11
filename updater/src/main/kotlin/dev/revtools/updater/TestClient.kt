@@ -1,4 +1,4 @@
-package dev.revtools.deobfuscator
+package dev.revtools.updater
 
 import java.applet.Applet
 import java.applet.AppletContext
@@ -32,7 +32,7 @@ class TestClient(private val file: File) {
         }
 
         val classloader = URLClassLoader(arrayOf(file.toURI().toURL()))
-        val main = params["initial_class"]!!.replace(".class", "")
+        val main = params["initial_class"]!!.replace(".class", "")+"_named"
         val applet = classloader.loadClass(main).newInstance() as Applet
 
         applet.background = Color.BLACK

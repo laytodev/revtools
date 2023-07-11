@@ -145,6 +145,9 @@ object Updater {
         println("=================================")
     }
 
+    fun save(file: File) {
+    }
+
     private fun matchUnobfuscated() {
         env.groupA.classes.forEach { clsA ->
             if(!clsA.name.isObfuscatedName()) {
@@ -558,6 +561,9 @@ object Updater {
 
         init(jarA, jarB)
         run()
+
+        //save(outputJar)
+        //TestClient(outputJar).start()
     }
 
     private val threadPool = Executors.newWorkStealingPool()
