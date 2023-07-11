@@ -174,8 +174,7 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
             .setInitialMax((classes.size * 3).toLong())
             .setUpdateIntervalMillis(10)
             .continuousUpdate()
-            .setMaxRenderedLength(125)
-            .setConsumer(ConsoleProgressBarConsumer(System.out))
+            .setMaxRenderedLength(120)
             .build()
 
         // Step A
@@ -257,7 +256,7 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
     }
 
     private fun processB(cls: ClassEntry) {
-        cls.methods.forEach { method ->
+        cls.memberMethods.forEach { method ->
             val queue = ArrayDeque<ClassEntry>()
             val visited = hashSetOf<ClassEntry>()
 
@@ -279,7 +278,7 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
             }
         }
 
-        cls.fields.forEach { field ->
+        cls.memberFields.forEach { field ->
             val queue = ArrayDeque<ClassEntry>()
             val visited = hashSetOf<ClassEntry>()
 

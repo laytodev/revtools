@@ -5,9 +5,12 @@ import dev.revtools.updater.classifier.*
 import me.tongfei.progressbar.ProgressBarBuilder
 import me.tongfei.progressbar.ProgressBarStyle
 import java.io.File
+import java.util.concurrent.Callable
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.sqrt
+import kotlin.streams.toList
 
 object Updater {
 
@@ -36,7 +39,6 @@ object Updater {
 
         var matchedAny: Boolean
         var matchedClassesBefore = true
-
         do {
             matchedAny = autoMatchMemberMethods()
             matchedAny = matchedAny or autoMatchMemberFields()
@@ -45,18 +47,18 @@ object Updater {
                 break
             }
 
-            matchedClassesBefore =  autoMatchClasses()
-            matchedAny = matchedAny or matchedClassesBefore
+            matchedAny = matchedAny or autoMatchClasses().also { matchedClassesBefore = it }
+            autoMatchStaticMethods()
+            autoMatchStaticFields()
         } while(matchedAny)
 
         do {
             matchedAny = autoMatchStaticMethods()
             matchedAny = matchedAny or autoMatchStaticFields()
-
             matchedAny = matchedAny or autoMatchClasses()
-            matchedAny = matchedAny or autoMatchMemberMethods()
-            matchedAny = matchedAny or autoMatchMemberFields()
         } while(matchedAny)
+
+        ClassifierUtil.MatchCache.clear()
 
         println("Completed matching.")
         
@@ -65,21 +67,35 @@ object Updater {
          */
         var totalClasses = 0
         var matchedClasses = 0
-        var totalMethods = 0
-        var matchedMethods = 0
-        var totalFields = 0
-        var matchedFields = 0
+        var totalMemberMethods = 0
+        var matchedMemberMethods = 0
+        var totalStaticMethods = 0
+        var matchedStaticMethods = 0
+        var totalMemberFields = 0
+        var matchedMemberFields = 0
+        var totalStaticFields = 0
+        var matchedStaticFields = 0
         
         env.groupA.classes.forEach { cls ->
             totalClasses++
             if(cls.hasMatch()) matchedClasses++
             cls.methods.forEach { method ->
-                totalMethods++
-                if(method.hasMatch()) matchedMethods++
+                if(method.isStatic()) {
+                    totalStaticMethods++
+                    if(method.hasMatch()) matchedStaticMethods++
+                } else {
+                    totalMemberMethods++
+                    if(method.hasMatch()) matchedMemberMethods++
+                }
             }
             cls.fields.forEach { field ->
-                totalFields++
-                if(field.hasMatch()) matchedFields++
+                if(field.isStatic()) {
+                    totalStaticFields++
+                    if(field.hasMatch()) matchedStaticFields++
+                } else {
+                    totalMemberFields++
+                    if(field.hasMatch()) matchedMemberFields++
+                }
             }
         }
         
@@ -90,25 +106,43 @@ object Updater {
             if(totalClasses == 0) 0.0 else 100.0 * matchedClasses / totalClasses
         )
 
-        val methodMatchStatus = String.format(
-            "Methods: %d / %d (%.2f%%)",
-            matchedMethods,
-            totalMethods,
-            if(totalMethods == 0) 0.0 else 100.0 * matchedMethods / totalMethods
+        val memberMethodMatchStatus = String.format(
+            "Member-Methods: %d / %d (%.2f%%)",
+            matchedMemberMethods,
+            totalMemberMethods,
+            if(totalMemberMethods == 0) 0.0 else 100.0 * matchedMemberMethods / totalMemberMethods
         )
 
-        val fieldMatchStatus = String.format(
-            "Fields: %d / %d (%.2f%%)",
-            matchedFields,
-            totalFields,
-            if(totalFields == 0) 0.0 else 100.0 * matchedFields / totalFields
+        val staticMethodMatchStatus = String.format(
+            "Static-Methods: %d / %d (%.2f%%)",
+            matchedStaticMethods,
+            totalStaticMethods,
+            if(totalStaticMethods == 0) 0.0 else 100.0 * matchedStaticMethods / totalStaticMethods
         )
-        
-        println("======== RESULTS ========")
+
+        val memberFieldMatchStatus = String.format(
+            "Member-Fields: %d / %d (%.2f%%)",
+            matchedMemberFields,
+            totalMemberFields,
+            if(totalMemberFields == 0) 0.0 else 100.0 * matchedMemberFields / totalMemberFields
+        )
+
+        val staticFieldMatchStatus = String.format(
+            "Static-Fields: %d / %d (%.2f%%)",
+            matchedStaticFields,
+            totalStaticFields,
+            if(totalStaticFields == 0) 0.0 else 100.0 * matchedStaticFields / totalStaticFields
+        )
+
+        println()
+        println()
+        println("======== MAPPING RESULTS ========")
         println(classMatchStatus)
-        println(methodMatchStatus)
-        println(fieldMatchStatus)
-        println("=========================")
+        println(memberMethodMatchStatus)
+        println(memberFieldMatchStatus)
+        println(staticMethodMatchStatus)
+        println(staticFieldMatchStatus)
+        println("=================================")
     }
 
     private fun matchUnobfuscated() {
@@ -165,7 +199,9 @@ object Updater {
             }
         }
 
-        assert(a.toString() == b.toString()) { "Invalid Match: $a -> $b"}
+        ClassifierUtil.MatchCache.clear()
+
+        //check(a.toString() == b.toString()) { "Invalid Match: $a -> $b"}
         println("Matched Class: $a -> $b")
     }
 
@@ -179,8 +215,10 @@ object Updater {
         a.match = b
         b.match = a
 
-        assert(a.toString() == b.toString()) { "Invalid Match: $a -> $b"}
-        println("Matched ${if(a.isStatic() && b.isStatic()) "Static" else ""} Method: $a -> $b")
+        ClassifierUtil.MatchCache.clear()
+
+        //check(a.toString() == b.toString()) { "Invalid Match: $a -> $b"}
+        println("Matched ${if(a.isStatic() && b.isStatic()) "Static-" else "Member-"}Method: $a -> $b")
     }
 
     fun match(a: FieldEntry, b: FieldEntry) {
@@ -193,8 +231,10 @@ object Updater {
         a.match = b
         b.match = a
 
-        assert(a.toString() == b.toString()) { "Invalid Match: $a -> $b"}
-        println("Matched Field: $a -> $b")
+        ClassifierUtil.MatchCache.clear()
+
+        //check(a.toString() == b.toString()) { "Invalid Match: $a -> $b"}
+        println("Matched ${if(a.isStatic() && b.isStatic()) "Static-" else "Member-"}Field: $a -> $b")
     }
 
     fun unmatchMembers(cls: ClassEntry) {
@@ -230,7 +270,7 @@ object Updater {
         val maxScore = ClassClassifier.maxScore
         val maxMismatch = maxScore - getRawScore(classAbsThreshold * (1 - classRelThreshold), maxScore)
         val matches = ConcurrentHashMap<ClassEntry, ClassEntry>()
-        srcClasses.forEach { src ->
+        srcClasses.runParallel { src ->
             progress.step()
             val ranking = ClassifierUtil.rank(src, dstClasses, ClassClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
             if(checkRank(ranking, classAbsThreshold, classRelThreshold, maxScore)) {
@@ -271,7 +311,7 @@ object Updater {
                 .setMaxRenderedLength(120)
                 .build()
 
-            classes.forEach { srcCls ->
+            classes.runParallel { srcCls ->
                 var unmatched = 0
                 for(srcMethod in srcCls.memberMethods) {
                     if(srcMethod.hasMatch() || !srcMethod.isMatchable) continue
@@ -297,7 +337,7 @@ object Updater {
             match(src, dst)
         }
 
-        println("Matched ${matches.size} member methods. (${totalUnmatched.get()} unmatched)")
+        println("Matched ${matches.size} member-methods. (${totalUnmatched.get()} unmatched)")
         return matches.isNotEmpty()
     }
 
@@ -305,9 +345,8 @@ object Updater {
         val totalUnmatched = AtomicInteger()
 
         fun matchStaticMethods(totalUnmatched: AtomicInteger): ConcurrentHashMap<MethodEntry, MethodEntry> {
-            val srcMethods = env.groupA.classes.flatMap { it.staticMethods }
-                .filter { !it.hasMatch() && it.isMatchable }
-                .toList()
+            val srcMethods = env.groupA.classes.flatMap { it.staticMethods }.filter { !it.hasMatch() }
+            val dstMethods = env.groupB.classes.flatMap { it.staticMethods }.filter { !it.hasMatch() }
 
             val maxScore = MethodClassifier.maxScore
             val maxMismatch = maxScore - getRawScore(methodAbsThreshold * (1 - methodRelThreshold), maxScore)
@@ -323,10 +362,8 @@ object Updater {
                 .build()
 
             var unmatched = 0
-            for(srcMethod in srcMethods) {
-                if(srcMethod.hasMatch() || !srcMethod.isMatchable) continue
+            srcMethods.runParallel { srcMethod ->
                 progress.step()
-                val dstMethods = env.groupB.classes.flatMap { it.staticMethods }.filter { !it.hasMatch() }
                 val ranking = ClassifierUtil.rank(srcMethod, dstMethods, MethodClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
                 if(checkRank(ranking, methodAbsThreshold, methodRelThreshold, maxScore)) {
                     val match = ranking[0].subject
@@ -347,7 +384,7 @@ object Updater {
             match(src, dst)
         }
 
-        println("Matched ${matches.size} static methods. (${totalUnmatched.get()} unmatched)")
+        println("Matched ${matches.size} static-methods. (${totalUnmatched.get()} unmatched)")
         return matches.isNotEmpty()
     }
 
@@ -373,7 +410,7 @@ object Updater {
                 .setMaxRenderedLength(120)
                 .build()
 
-            classes.forEach { srcCls ->
+            classes.runParallel { srcCls ->
                 var unmatched = 0
                 for(srcField in srcCls.memberFields) {
                     if(srcField.hasMatch() || !srcField.isMatchable) continue
@@ -399,7 +436,7 @@ object Updater {
             match(src, dst)
         }
 
-        println("Matched ${matches.size} member fields. (${totalUnmatched.get()} unmatched)")
+        println("Matched ${matches.size} member-fields. (${totalUnmatched.get()} unmatched)")
         return matches.isNotEmpty()
     }
 
@@ -425,8 +462,8 @@ object Updater {
                 .build()
 
             var unmatched = 0
-            for(srcField in srcFields) {
-                if(srcField.hasMatch() || !srcField.isMatchable) continue
+            srcFields.runParallel { srcField ->
+                if(srcField.hasMatch() || !srcField.isMatchable) return@runParallel
                 progress.step()
                 val dstFields = env.groupB.classes.flatMap { it.staticFields }.filter { !it.hasMatch() }
                 val ranking = ClassifierUtil.rank(srcField, dstFields, FieldClassifier.rankers, ClassifierUtil::isMaybeEqual, maxMismatch)
@@ -449,7 +486,7 @@ object Updater {
             match(src, dst)
         }
 
-        println("Matched ${matches.size} static fields. (${totalUnmatched.get()} unmatched)")
+        println("Matched ${matches.size} static-fields. (${totalUnmatched.get()} unmatched)")
         return matches.isNotEmpty()
     }
 
@@ -459,11 +496,11 @@ object Updater {
         val score = getScore(ranking[0].score, maxScore)
         if(score < absThreshold) return false
 
-        if(ranking.size == 1) {
-            return true
+        return if(ranking.size == 1) {
+            true
         } else {
             val nextScore = getScore(ranking[1].score, maxScore)
-            return nextScore < score * (1 - relThreshold)
+            nextScore < score * (1 - relThreshold)
         }
     }
 
@@ -495,6 +532,23 @@ object Updater {
         return arrayOf("class", "method", "field").any { this.startsWith(it) }
     }
 
+    fun <T> List<T>.runParallel(workBlock: (T) -> Unit) {
+        if(this.isEmpty()) return
+        val itemsDone = AtomicInteger()
+        try {
+            val futures = threadPool.invokeAll(this.stream().map<Callable<Unit>> { workItem -> Callable {
+                workBlock(workItem)
+                itemsDone.incrementAndGet()
+                return@Callable null
+            }}.toList())
+            futures.forEach { future ->
+                future.get()
+            }
+        } catch(e: Exception) {
+            throw RuntimeException(e)
+        }
+    }
+
     @JvmStatic
     fun main(args: Array<String>) {
         if(args.size < 3) error("Usage: updater.jar <old-jar> <new-jar> <output-jar>")
@@ -506,10 +560,12 @@ object Updater {
         run()
     }
 
-    private const val classAbsThreshold = 0.75
-    private const val classRelThreshold = 0.075
-    private const val methodAbsThreshold = 0.75
-    private const val methodRelThreshold = 0.075
-    private const val fieldAbsThreshold = 0.75
-    private const val fieldRelThreshold = 0.075
+    private val threadPool = Executors.newWorkStealingPool()
+
+    private const val classAbsThreshold = 0.7
+    private const val classRelThreshold = 0.07
+    private const val methodAbsThreshold = 0.7
+    private const val methodRelThreshold = 0.07
+    private const val fieldAbsThreshold = 0.7
+    private const val fieldRelThreshold = 0.07
 }

@@ -32,6 +32,8 @@ class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : M
     val methodTypeRefs = hashSetOf<MethodEntry>()
     val fieldTypeRefs = hashSetOf<FieldEntry>()
 
+    val strings = hashSetOf<String>()
+
     private val methodMap = hashMapOf<String, MethodEntry>()
     val methods get() = methodMap.values
 

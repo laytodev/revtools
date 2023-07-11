@@ -10,15 +10,16 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
         addRanker(fieldType, 10)
         addRanker(accessFlags, 4)
         addRanker(type, 10)
-        addRanker(parentField, 10)
+        addRanker(parentField, 6)
         addRanker(childFields, 3)
         addRanker(writeRefs, 6)
         addRanker(readRefs, 6)
         addRanker(initValue, 7)
-        addRanker(initIndex, 7)
+        addRanker(initStrings, 8)
+        //addRanker(initIndex, 7)
         addRanker(initCode, 12)
-        //addRanker(writeRefsBci, 6)
-        //addRanker(readRefsBci, 6)
+        addRanker(writeRefsBci, 6)
+        addRanker(readRefsBci, 6)
     }
 
     private val fieldType = ranker("field type") { a, b ->
@@ -105,6 +106,22 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
         return@ranker if(indexA == indexB) 1.0 else 0.0
     }
 
+    private val initStrings = ranker("init strings") { a, b ->
+        val initA = a.initializer
+        val initB = b.initializer
+
+        if(initA.isEmpty() && initB.isEmpty()) return@ranker 1.0
+        if(initA.isEmpty() || initB.isEmpty()) return@ranker 0.0
+
+        val stringsA = hashSetOf<String>()
+        val stringsB = hashSetOf<String>()
+
+        ClassifierUtil.extractStrings(initA, stringsA)
+        ClassifierUtil.extractStrings(initB, stringsB)
+
+        return@ranker ClassifierUtil.compareSets(stringsA, stringsB)
+    }
+
     private val writeRefsBci = ranker("write refs (bci)") { a, b ->
         val ownerA = a.cls.name
         val nameA = a.name
@@ -123,7 +140,7 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
                 continue
             }
 
-            val map = ClassifierUtil.mapInsns(src, dst)
+            val map = ClassifierUtil.mapInsns(src, dst) ?: continue
 
             val insnsA = src.instructions
             val insnsB = dst.instructions
@@ -173,7 +190,7 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
                 continue
             }
 
-            val map = ClassifierUtil.mapInsns(src, dst)
+            val map = ClassifierUtil.mapInsns(src, dst) ?: continue
 
             val insnsA = src.instructions
             val insnsB = dst.instructions

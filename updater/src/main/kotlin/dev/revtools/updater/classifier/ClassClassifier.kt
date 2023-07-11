@@ -20,13 +20,14 @@ object ClassClassifier : AbstractClassifier<ClassEntry>() {
         addRanker(innerClasses, 5)
         addRanker(memberMethodCount, 3)
         addRanker(memberFieldCount, 3)
+        addRanker(staticMethodCount, 3)
+        addRanker(staticFieldCount, 3)
         addRanker(outRefs, 6)
         addRanker(inRefs, 6)
         addRanker(methodOutRefs, 5)
         addRanker(methodInRefs, 6)
         addRanker(fieldWriteRefs, 5)
         addRanker(fieldReadRefs, 5)
-        addRanker(clinitFieldOrder, 15)
     }
 
     private val classType = ranker("class type") { a, b ->
@@ -80,6 +81,14 @@ object ClassClassifier : AbstractClassifier<ClassEntry>() {
 
     private val memberFieldCount = ranker("member field count") { a, b ->
         return@ranker ClassifierUtil.compareCounts(a.memberFields.size, b.memberFields.size)
+    }
+
+    private val staticMethodCount = ranker("static method count") { a, b ->
+        return@ranker ClassifierUtil.compareCounts(a.staticMethods.size, b.staticMethods.size)
+    }
+
+    private val staticFieldCount = ranker("static field count") { a, b ->
+        return@ranker ClassifierUtil.compareCounts(a.staticFields.size, b.staticFields.size)
     }
 
     private val hierarchyDepth = ranker("hierarchy depth") { a, b ->

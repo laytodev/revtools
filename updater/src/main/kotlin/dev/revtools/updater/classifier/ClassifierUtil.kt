@@ -6,26 +6,16 @@ import dev.revtools.updater.asm.FieldEntry
 import dev.revtools.updater.asm.Matchable
 import dev.revtools.updater.asm.MethodEntry
 import org.objectweb.asm.Type
-import org.objectweb.asm.tree.AbstractInsnNode
+import org.objectweb.asm.tree.*
 import org.objectweb.asm.tree.AbstractInsnNode.*
-import org.objectweb.asm.tree.FieldInsnNode
-import org.objectweb.asm.tree.IincInsnNode
-import org.objectweb.asm.tree.InsnList
-import org.objectweb.asm.tree.IntInsnNode
-import org.objectweb.asm.tree.JumpInsnNode
-import org.objectweb.asm.tree.LdcInsnNode
-import org.objectweb.asm.tree.LookupSwitchInsnNode
-import org.objectweb.asm.tree.MethodInsnNode
-import org.objectweb.asm.tree.MultiANewArrayInsnNode
-import org.objectweb.asm.tree.TableSwitchInsnNode
-import org.objectweb.asm.tree.TypeInsnNode
-import org.objectweb.asm.tree.VarInsnNode
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import kotlin.collections.HashSet
+import kotlin.Comparator
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.streams.toList
 
 object ClassifierUtil {
 
@@ -41,7 +31,7 @@ object ClassifierUtil {
         if(a == b) return true
         if(a.hasMatch()) return a.match == b
         if(b.hasMatch()) return b.match == a
-        if(!a.isStatic() || !b.isStatic()) {
+        if(!a.isStatic() && !b.isStatic()) {
             if(!isMaybeEqual(a.cls, b.cls)) return false
         }
         return !(a.name.startsWith("<") && b.name.startsWith("<") && a.name != b.name)
@@ -51,7 +41,7 @@ object ClassifierUtil {
         if(a == b) return true
         if(a.hasMatch()) return a.match == b
         if(b.hasMatch()) return b.match == a
-        if(!a.isStatic() || !b.isStatic()) {
+        if(!a.isStatic() && !b.isStatic()) {
             if(!isMaybeEqual(a.cls, b.cls)) return false
         }
         return true
@@ -103,21 +93,19 @@ object ClassifierUtil {
     }
 
     fun <T : Matchable<T>> rankParallel(src: T, dsts: List<T>, rankers: List<Ranker<T>>, maybeEqualCheck: (T, T) -> Boolean, maxMismatch: Double): List<RankResult<T>> {
-        val executor = Executors.newWorkStealingPool()
-        val results = mutableListOf<RankResult<T>>()
-        dsts.forEach { dst ->
-            executor.execute {
-                val result = rank(src, dst, rankers, maybeEqualCheck, maxMismatch)
-                if(result != null) results.add(result)
-            }
-        }
-        return results.sortedByDescending { it.score }
+        return dsts.stream()
+            .parallel()
+            .map { dst -> rank(src, dst, rankers, maybeEqualCheck, maxMismatch) }
+            .filter { it != null }
+            .sorted(Comparator.comparing<RankResult<T>, Double> { it.score }.reversed())
+            .toList()
+            .filterNotNull()
     }
 
     fun compareCounts(a: Int, b: Int): Double {
         val delta = abs(a - b)
         if(delta == 0) return 1.0
-        return 1.0 - delta.toDouble() / max(a, b)
+        return 1 - delta.toDouble() / max(a, b)
     }
 
     fun <T> compareSets(a: HashSet<T>, b: HashSet<T>): Double {
@@ -485,8 +473,17 @@ object ClassifierUtil {
         return isMaybeEqual(methodA, methodB)
     }
 
-    fun mapInsns(a: MethodEntry, b: MethodEntry): IntArray {
-        return mapInsns(a.instructions, b.instructions, a, b)
+    fun mapInsns(a: MethodEntry, b: MethodEntry): IntArray? {
+        val insnsA = a.instructions
+        val insnsB = b.instructions
+
+        if(a.instructions.size() == 0 || b.instructions.size() == 0) return null
+
+        return if(insnsA.size() * insnsB.size() < 1000) {
+            mapInsns(insnsA, insnsB, a, b)
+        } else {
+            MatchCache.compute(INSN_MAP_CACHE, a, b) { ma, mb -> mapInsns(ma.instructions, mb.instructions, ma, mb) }
+        }
     }
 
     fun mapInsns(listA: InsnList, listB: InsnList, mthA: MethodEntry? = null, mthB: MethodEntry? = null): IntArray {
@@ -495,7 +492,49 @@ object ClassifierUtil {
         }
     }
 
+    fun extractStrings(insns: InsnList, out: HashSet<String>) {
+        extractStrings(insns.iterator(), out)
+    }
+
+    fun extractStrings(insns: List<AbstractInsnNode>, out: HashSet<String>) {
+        extractStrings(insns.iterator(), out)
+    }
+
+    private fun extractStrings(insns: Iterator<AbstractInsnNode>, out: HashSet<String>) {
+        while(insns.hasNext()) {
+            val insn = insns.next()
+            if(insn is LdcInsnNode) {
+                if(insn.cst is String) {
+                    out.add(insn.cst as String)
+                }
+            }
+        }
+    }
+
     const val COMPARED_SIMILAR = 0
     const val COMPARED_POSSIBLE = 1
     const val COMPARED_DISTINCT = 2
+
+    private val INSN_MAP_CACHE = MatchCache.CacheToken<IntArray>()
+
+
+    @Suppress("UNCHECKED_CAST")
+    object MatchCache {
+
+        class CacheToken<T>
+        data class CacheKey<T : Matchable<T>>(val token: CacheToken<*>, val a: T, val b: T)
+
+        private val cache = ConcurrentHashMap<CacheKey<*>, Any>()
+
+        fun clear() { cache.clear() }
+
+        fun <T, U : Matchable<U>> get(token: CacheToken<T>, a: U, b: U): T {
+            return cache[CacheKey(token, a, b)] as T
+        }
+
+        fun <T : Any, U : Matchable<U>> compute(token: CacheToken<T>, a: U, b: U, f: (U, U) -> T): T {
+            return cache.computeIfAbsent(CacheKey(token, a, b)) { f(it.a as U, it.b as U) } as T
+        }
+
+    }
 }
