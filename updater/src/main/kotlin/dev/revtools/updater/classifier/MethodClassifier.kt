@@ -23,8 +23,8 @@ object MethodClassifier : AbstractClassifier<MethodEntry>() {
         addRanker(inRefs, 6)
         addRanker(fieldWrites, 5)
         addRanker(fieldReads, 5)
-        addRanker(code, 12)
-        addRanker(inRefsBci, 6)
+        addRanker(code, 12, RankerLevel.FULL, RankerLevel.EXTRA)
+        addRanker(inRefsBci, 6, RankerLevel.EXTRA)
     }
 
     private val methodType = ranker("method type") { a, b ->

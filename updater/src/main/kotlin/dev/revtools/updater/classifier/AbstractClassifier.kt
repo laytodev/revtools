@@ -4,15 +4,27 @@ import dev.revtools.updater.asm.Matchable
 
 abstract class AbstractClassifier<T : Matchable<T>> {
 
-    val rankers = mutableListOf<Ranker<T>>()
-    var maxScore = 0.0
+    val rankers = mutableMapOf<RankerLevel, MutableList<Ranker<T>>>()
+
+    private var maxScore = mutableMapOf<RankerLevel, Double>()
 
     abstract fun init()
 
-    fun addRanker(ranker: Ranker<T>, weight: Int) {
+    fun addRanker(ranker: Ranker<T>, weight: Int, vararg levels: RankerLevel) {
+        val lvls = if(levels.isEmpty()) RankerLevel.ALL else levels
         ranker.weight = weight.toDouble()
-        rankers.add(ranker)
-        maxScore += weight.toDouble()
+        lvls.forEach { lvl ->
+            rankers.computeIfAbsent(lvl) { mutableListOf() }.add(ranker)
+            maxScore[lvl] = getMaxScore(lvl) + weight
+        }
+    }
+
+    fun getRankers(level: RankerLevel): List<Ranker<T>> {
+        return rankers.getOrDefault(level, listOf())
+    }
+
+    fun getMaxScore(level: RankerLevel): Double {
+        return maxScore.getOrDefault(level, 0.0)
     }
 
     @DslMarker
@@ -26,6 +38,7 @@ abstract class AbstractClassifier<T : Matchable<T>> {
             override fun getScore(a: T, b: T): Double {
                 return block(a, b)
             }
+            override fun toString(): String = name
         }
     }
 }

@@ -26,10 +26,10 @@ object ClassClassifier : AbstractClassifier<ClassEntry>() {
         addRanker(inRefs, 6)
         addRanker(stringConstants, 8)
         addRanker(numberConstants, 6)
-        addRanker(methodOutRefs, 5)
-        addRanker(methodInRefs, 6)
-        addRanker(fieldWriteRefs, 5)
-        addRanker(fieldReadRefs, 5)
+        addRanker(methodOutRefs, 5, RankerLevel.INTERMEDIATE, RankerLevel.FULL, RankerLevel.EXTRA)
+        addRanker(methodInRefs, 6, RankerLevel.INTERMEDIATE, RankerLevel.FULL, RankerLevel.EXTRA)
+        addRanker(fieldWriteRefs, 5, RankerLevel.INTERMEDIATE, RankerLevel.FULL, RankerLevel.EXTRA)
+        addRanker(fieldReadRefs, 5, RankerLevel.INTERMEDIATE, RankerLevel.FULL, RankerLevel.EXTRA)
     }
 
     private val classType = ranker("class type") { a, b ->

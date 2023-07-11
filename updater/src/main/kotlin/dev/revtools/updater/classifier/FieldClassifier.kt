@@ -16,10 +16,9 @@ object FieldClassifier : AbstractClassifier<FieldEntry>() {
         addRanker(readRefs, 6)
         addRanker(initValue, 7)
         addRanker(initStrings, 8)
-        //addRanker(initIndex, 7)
-        addRanker(initCode, 12)
-        addRanker(writeRefsBci, 6)
-        addRanker(readRefsBci, 6)
+        addRanker(initCode, 12, RankerLevel.INTERMEDIATE, RankerLevel.FULL, RankerLevel.EXTRA)
+        addRanker(writeRefsBci, 6, RankerLevel.EXTRA)
+        addRanker(readRefsBci, 6, RankerLevel.EXTRA)
     }
 
     private val fieldType = ranker("field type") { a, b ->
