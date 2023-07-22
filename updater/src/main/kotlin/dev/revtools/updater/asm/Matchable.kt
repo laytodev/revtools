@@ -1,8 +1,8 @@
 package dev.revtools.updater.asm
 
-abstract class Matchable<T> {
+abstract class Matchable<T : Matchable<T>> {
 
-    var isMatchable: Boolean = true
+    var isObfuscated: Boolean = true
 
     var match: T? = null
 

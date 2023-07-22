@@ -1,118 +1,92 @@
 package dev.revtools.updater.asm
 
+import dev.revtools.updater.util.identityHashSetOf
+import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes.*
 import org.objectweb.asm.tree.ClassNode
 import java.util.ArrayDeque
 
-class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : Matchable<ClassEntry>() {
+class ClassInstance(val node: ClassNode) : Matchable<ClassInstance>() {
 
-    init {
-        if(group.isShared) {
-            match = this
-        }
-    }
+    lateinit var group: ClassGroup internal set
 
     val env get() = group.env
+    val isShared get() = group.isShared
 
     val access = node.access
     val name = node.name
 
-    var real: Boolean = true
-    var elementClass: ClassEntry? = null
-
-    var superClass: ClassEntry? = null
-    val childClasses = hashSetOf<ClassEntry>()
-    val interfaces = hashSetOf<ClassEntry>()
-    val implementers = hashSetOf<ClassEntry>()
-    val arrayClasses = hashSetOf<ClassEntry>()
-
-    var outerClass: ClassEntry? = null
-    val innerClasses = hashSetOf<ClassEntry>()
-
-    val methodTypeRefs = hashSetOf<MethodEntry>()
-    val fieldTypeRefs = hashSetOf<FieldEntry>()
+    var parent: ClassInstance? = null
+    val children = identityHashSetOf<ClassInstance>()
+    val interfaces = identityHashSetOf<ClassInstance>()
+    val implementers = identityHashSetOf<ClassInstance>()
 
     val strings = hashSetOf<String>()
+    val numbers = hashSetOf<Number>()
 
-    private val methodMap = hashMapOf<String, MethodEntry>()
-    val methods get() = methodMap.values
+    val methodTypeRefs = identityHashSetOf<MethodInstance>()
+    val fieldTypeRefs = identityHashSetOf<FieldInstance>()
 
-    private val fieldMap = hashMapOf<String, FieldEntry>()
-    val fields get() = fieldMap.values
+    val methods = identityHashSetOf<MethodInstance>()
+    val fields = identityHashSetOf<FieldInstance>()
 
     val memberMethods get() = methods.filter { !it.isStatic() }
     val memberFields get() = fields.filter { !it.isStatic() }
-
     val staticMethods get() = methods.filter { it.isStatic() }
     val staticFields get() = fields.filter { it.isStatic() }
 
-    fun addMethod(method: MethodEntry) {
-        methodMap[method.id] = method
-    }
+    fun getMethod(name: String, desc: String) = methods.firstOrNull { it.name == name && it.desc == desc }
+    fun getField(name: String, desc: String) = fields.firstOrNull { it.name == name && it.desc == desc }
 
-    fun addField(field: FieldEntry) {
-        fieldMap[field.id] = field
-    }
-
-    fun getMethod(name: String, desc: String) = methodMap["$name$desc"]
-    fun getField(name: String, desc: String) = fieldMap["$name:$desc"]
-
-    fun resolveMethod(name: String, desc: String, toInterface: Boolean): MethodEntry? {
+    fun resolveMethod(name: String, desc: String, toInterface: Boolean): MethodInstance? {
         if(!toInterface) {
             var ret = getMethod(name, desc)
             if(ret != null) return ret
 
-            var cls: ClassEntry? = this.superClass
-            while(cls != null) {
+            var cls: ClassInstance = this
+            while(cls.parent?.also { cls = it } != null) {
                 ret = cls.getMethod(name, desc)
                 if(ret != null) return ret
-                cls = cls.superClass
             }
 
             return resolveInterfaceMethod(name, desc)
         } else {
             var ret = getMethod(name, desc)
             if(ret != null) return ret
-
-            if(superClass != null) {
-                ret = superClass!!.getMethod(name, desc)
-                if(ret != null && (ret.access and (ACC_PUBLIC or ACC_STATIC)) == ACC_PUBLIC) return ret
-            }
-
-            return resolveInterfaceMethod(name, desc)
         }
+
+        return null
     }
 
-    private fun resolveInterfaceMethod(name: String, desc: String): MethodEntry? {
-        val queue = ArrayDeque<ClassEntry>()
-        val visited = hashSetOf<ClassEntry>()
+    private fun resolveInterfaceMethod(name: String, desc: String): MethodInstance? {
+        val queue = ArrayDeque<ClassInstance>()
+        val visited = identityHashSetOf<ClassInstance>()
 
-        var cls: ClassEntry? = this
+        var cls = this
         do {
-            cls!!.interfaces.forEach { itf ->
+            cls.interfaces.forEach { itf ->
                 if(visited.add(itf)) queue.add(itf)
             }
-            cls = cls.superClass
-        } while(cls != null)
+        } while(cls.parent?.also { cls = it } != null)
 
         if(queue.isEmpty()) return null
 
-        val matches = hashSetOf<MethodEntry>()
+        val matches = identityHashSetOf<MethodInstance>()
         var foundNonAbstract = false
 
-        cls = queue.poll()
-        while(cls != null) {
+        while(queue.poll()?.also { cls = it } != null) {
             val ret = cls.getMethod(name, desc)
             if(ret != null && (ret.access and (ACC_PRIVATE or ACC_STATIC)) == 0) {
                 matches.add(ret)
+
                 if((ret.access and ACC_ABSTRACT) == 0) {
                     foundNonAbstract = true
                 }
             }
+
             cls.interfaces.forEach { itf ->
                 if(visited.add(itf)) queue.add(itf)
             }
-            cls = queue.poll()
         }
 
         if(matches.isEmpty()) return null
@@ -131,82 +105,74 @@ class ClassEntry(val group: ClassGroup, val id: String, val node: ClassNode) : M
 
         val itr = matches.iterator()
         while(itr.hasNext()) {
-            val m = itr.next()
+            val m1 = itr.next()
             cmpLoop@ for(m2 in matches) {
-                if(m2 == m) continue
-                if(m2.cls.interfaces.contains(m.cls)) {
+                if(m2 == m1) continue
+
+                if(m1.cls in m2.cls.interfaces) {
                     itr.remove()
                     break
                 }
 
                 queue.addAll(m2.cls.interfaces)
-                cls = queue.poll()
-                while(cls != null) {
-                    if(cls.interfaces.contains(m.cls)) {
+
+                while(queue.poll()?.also { cls = it } != null) {
+                    if(m1.cls in cls.interfaces) {
                         itr.remove()
                         queue.clear()
                         break@cmpLoop
                     }
+
                     queue.addAll(cls.interfaces)
-                    cls = queue.poll()
                 }
             }
         }
+
         return matches.iterator().next()
     }
 
-    fun resolveField(name: String, desc: String): FieldEntry? {
+    fun resolveField(name: String, desc: String): FieldInstance? {
         var ret = getField(name, desc)
         if(ret != null) return ret
 
         if(interfaces.isNotEmpty()) {
-            val queue = ArrayDeque<ClassEntry>()
+            val queue = ArrayDeque<ClassInstance>()
             queue.addAll(interfaces)
 
-            var cls: ClassEntry? = queue.pollFirst()
-            while(cls != null) {
+            var cls = this
+            while(queue.poll()?.also { cls = it } != null) {
                 ret = cls.getField(name, desc)
                 if(ret != null) return ret
+
                 cls.interfaces.forEach { itf ->
                     queue.addFirst(itf)
                 }
-                cls = queue.pollFirst()
             }
         }
 
-        var cls = superClass
+        var cls = parent
         while(cls != null) {
-            ret = cls.getField(name, desc)
+            ret = cls!!.getField(name, desc)
             if(ret != null) return ret
-            cls = cls.superClass
+            cls = cls!!.parent
         }
 
         return null
     }
 
-    fun isArray() = elementClass != null
-
-    val dims: Int get() {
-        if(!isArray()) return 0
-        return id.lastIndexOf('[') + 1
-    }
-
     fun isInterface() = (access and ACC_INTERFACE) != 0
     fun isAbstract() = (access and ACC_ABSTRACT) != 0
-
-    fun isPrimitive(): Boolean {
-        val start = id[0]
-        return start != 'L' && start != '['
-    }
 
     override fun toString(): String {
         return name
     }
 
     companion object {
-
-        fun getId(name: String): String {
-            return if(name[0] == '[') name else "L$name;"
+        fun create(bytes: ByteArray, flags: Int = ClassReader.SKIP_FRAMES): ClassInstance {
+            val node = ClassNode()
+            val reader = ClassReader(bytes)
+            reader.accept(node, flags)
+            return ClassInstance(node)
         }
     }
 }
