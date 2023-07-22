@@ -5,7 +5,7 @@ import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.FieldNode
 
-class FieldInstance(val cls: ClassInstance, val node: FieldNode) {
+class FieldInstance(val cls: ClassInstance, val node: FieldNode) : Matchable<FieldInstance>() {
 
     val group get() = cls.group
     val env get() = cls.env
@@ -17,6 +17,9 @@ class FieldInstance(val cls: ClassInstance, val node: FieldNode) {
 
     val type get() = Type.getType(desc)
     lateinit var typeClass: ClassInstance internal set
+
+    val parents = identityHashSetOf<FieldInstance>()
+    val children = identityHashSetOf<FieldInstance>()
 
     val readRefs = identityHashSetOf<MethodInstance>()
     val writeRefs = identityHashSetOf<MethodInstance>()

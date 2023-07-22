@@ -5,7 +5,7 @@ import org.objectweb.asm.Opcodes.*
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.MethodNode
 
-class MethodInstance(val cls: ClassInstance, val node: MethodNode) {
+class MethodInstance(val cls: ClassInstance, val node: MethodNode) : Matchable<MethodInstance>() {
 
     val group get() = cls.group
     val env get() = cls.env
@@ -20,6 +20,9 @@ class MethodInstance(val cls: ClassInstance, val node: MethodNode) {
 
     lateinit var retType: ClassInstance internal set
     val argTypes = mutableListOf<ClassInstance>()
+
+    val parents = identityHashSetOf<MethodInstance>()
+    val children = identityHashSetOf<MethodInstance>()
 
     val refsIn = identityHashSetOf<MethodInstance>()
     val refsOut = identityHashSetOf<MethodInstance>()

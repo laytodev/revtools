@@ -24,8 +24,7 @@ class UnusedMethodRemover : Transformer {
             superClasses.put(cls, cls.superName)
         }
 
-        superCl
-        sses.forEach { cls, superName ->
+        superClasses.forEach { cls, superName ->
             if(group.getClass(superName) != null) {
                 subClasses.put(group.getClass(superName), cls.name)
             }

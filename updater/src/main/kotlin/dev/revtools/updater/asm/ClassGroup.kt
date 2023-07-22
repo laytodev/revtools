@@ -1,5 +1,7 @@
 package dev.revtools.updater.asm
 
+import dev.revtools.updater.util.identityHashSetOf
+import dev.revtools.updater.util.isObfuscatedName
 import org.objectweb.asm.Opcodes.*
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.ClassNode
@@ -11,6 +13,7 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.ArrayDeque
 import java.util.jar.JarFile
 import kotlin.math.max
 
@@ -31,6 +34,7 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
     fun addClass(cls: ClassInstance): Boolean {
         if(classMap.containsKey(cls.name)) return false
         cls.group = this
+        cls.isObfuscated = cls.name.isObfuscatedName()
         classMap[cls.name] = cls
         return true
     }
@@ -96,15 +100,20 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
     fun process() {
         classes.forEach { processA(it) }
         classes.forEach { processB(it) }
+        classes.forEach { processC(it) }
     }
 
     private fun processA(cls: ClassInstance) {
         cls.node.methods.forEach {
-            cls.methods.add(MethodInstance(cls, it))
+            val method = MethodInstance(cls, it)
+            method.isObfuscated = method.name.isObfuscatedName()
+            cls.methods.add(method)
         }
 
         cls.node.fields.forEach {
-            cls.fields.add(FieldInstance(cls, it))
+            val field = FieldInstance(cls, it)
+            field.isObfuscated = field.name.isObfuscatedName()
+            cls.fields.add(field)
         }
 
         if(cls.parent == null && cls.node.superName != null) {
@@ -183,5 +192,63 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
                 }
             }
         }
+    }
+
+    private fun processC(cls: ClassInstance) {
+        val queue = ArrayDeque<ClassInstance>()
+        val visited = identityHashSetOf<ClassInstance>()
+
+        cls.methods.forEach { method ->
+            if(method.isConstructor() || method.isInitializer()) return@forEach
+            if(method.isHierarchyBarrier()) return@forEach
+
+            if(method.cls.parent != null) queue.add(method.cls.parent!!)
+            queue.addAll(method.cls.interfaces)
+
+            var c: ClassInstance = cls
+            while(queue.poll()?.also { c = it } != null) {
+                if(!visited.add(c)) continue
+                val m = c.getMethod(method.name, method.desc)
+                if(m != null && !m.isHierarchyBarrier()) {
+                    method.parents.add(m)
+                    m.children.add(method)
+                }
+                if(c.parent != null) queue.add(c.parent!!)
+                queue.addAll(c.interfaces)
+            }
+            visited.clear()
+        }
+
+        queue.clear()
+        visited.clear()
+
+        cls.fields.forEach { field ->
+            if(field.isHierarchyBarrier()) return@forEach
+
+            if(field.cls.parent != null) queue.add(field.cls.parent!!)
+            queue.addAll(field.cls.interfaces)
+
+            var c: ClassInstance = cls
+            while(queue.poll()?.also { c = it } != null) {
+                if(!visited.add(c)) continue
+                val f = c.getField(field.name, field.desc)
+                if(f != null && !f.isHierarchyBarrier()) {
+                    field.parents.add(f)
+                    f.children.add(field)
+                }
+                if(c.parent != null) queue.add(c.parent!!)
+                queue.addAll(c.interfaces)
+            }
+
+            visited.clear()
+        }
+    }
+
+    private fun MethodInstance.isHierarchyBarrier(): Boolean {
+        return (access and (ACC_PRIVATE or ACC_STATIC)) != 0
+    }
+
+    private fun FieldInstance.isHierarchyBarrier(): Boolean {
+        return (access and (ACC_PRIVATE or ACC_STATIC)) != 0
     }
 }
