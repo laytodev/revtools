@@ -4,14 +4,23 @@ import dev.revtools.updater.asm.ClassEnv
 import dev.revtools.updater.asm.ClassInstance
 import dev.revtools.updater.asm.FieldInstance
 import dev.revtools.updater.asm.MethodInstance
-import dev.revtools.updater.classifier.ClassifierUtil
+import dev.revtools.updater.classifier.*
 import dev.revtools.updater.classifier.ClassifierUtil.filterPotentialMatches
+import dev.revtools.updater.util.ProgressUtil
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.sqrt
 
 object Updater {
 
     var runTestClient = false
     val env = ClassEnv()
+
+    init {
+        ClassClassifier.init()
+        MethodClassifier.init()
+    }
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -38,6 +47,15 @@ object Updater {
 
         matchUnobfuscatedClasses()
         matchSharedClassMemberRefs()
+
+        if(autoMatchClasses(RankerLevel.INITIAL)) {
+            autoMatchClasses(RankerLevel.INITIAL)
+        }
+
+        autoMatchLevel(RankerLevel.INITIAL)
+        autoMatchLevel(RankerLevel.INTERMEDIATE)
+        autoMatchLevel(RankerLevel.FULL)
+        autoMatchLevel(RankerLevel.EXTRA)
 
         env.groupA.classes.forEach { clsA ->
             if(clsA.hasMatch() && clsA.name != clsA.match!!.name) println("Mismatch: $clsA -> ${clsA.match!!}")
@@ -96,7 +114,99 @@ object Updater {
         }
     }
 
-    fun match(a: ClassInstance, b: ClassInstance) {
+    private fun autoMatchLevel(level: RankerLevel) {
+        var matchedAny: Boolean
+        var matchedClassesBefore = true
+        do {
+            matchedAny = autoMatchMemberMethods(level)
+
+            if(!matchedAny && !matchedClassesBefore) {
+                break
+            }
+
+            matchedAny = matchedAny or autoMatchClasses(level).also { matchedClassesBefore = it }
+        } while(matchedAny)
+    }
+
+    private fun autoMatchClasses(level: RankerLevel): Boolean {
+        val filter = { cls: ClassInstance -> !cls.hasMatch() }
+        val srcClasses = env.groupA.classes.filter(filter)
+        val dstClasses = env.groupB.classes.filter(filter)
+
+        ProgressUtil.start("[${level.name}] Matching Classes.", srcClasses.size)
+
+        val maxScore = ClassClassifier.getMaxScore(level)
+        val maxMismatch = maxScore - getRawScore(0.8 * (1 - 0.08), maxScore)
+        val matches = ConcurrentHashMap<ClassInstance, ClassInstance>()
+
+        srcClasses.forEach { srcCls ->
+            val ranking = ClassifierUtil.rank(srcCls, dstClasses, ClassClassifier.getRankers(level), ClassifierUtil::isPotentiallyEqual, maxMismatch)
+            if(checkRank(ranking, maxScore)) {
+                val match = ranking[0].subject
+                matches[srcCls] = match
+            }
+            ProgressUtil.step()
+        }
+
+        ProgressUtil.stop()
+
+        reduceMatches(matches)
+        matches.forEach { (src, dst) ->
+            match(src, dst)
+        }
+
+        println("Matched ${matches.size} classes. (${srcClasses.size - matches.size} unmatched, ${env.groupA.classes.size} total)")
+
+        return matches.isNotEmpty()
+    }
+
+    private fun autoMatchMemberMethods(level: RankerLevel): Boolean {
+        val totalUnmatched = AtomicInteger()
+
+        fun matchMemberMethods(level: RankerLevel, totalUnmatched: AtomicInteger): ConcurrentHashMap<MethodInstance, MethodInstance> {
+            val srcClasses = env.groupA.classes.filter { it.hasMatch() && it.memberMethods.isNotEmpty() }
+                .filter { it.memberMethods.any { m -> !m.hasMatch() } }
+                .toList()
+            if(srcClasses.isEmpty()) return ConcurrentHashMap()
+
+            ProgressUtil.start("[${level.name}] Matching Member-Methods", srcClasses.flatMap { it.memberMethods }.count { !it.hasMatch()})
+
+            val maxScore = MethodClassifier.getMaxScore(level)
+            val maxMismatch = maxScore - getRawScore(0.8 - (1 - 0.08), maxScore)
+            val matches = ConcurrentHashMap<MethodInstance, MethodInstance>()
+
+            srcClasses.forEach { srcCls ->
+                var unmatched = 0
+                for(srcMethod in srcCls.memberMethods) {
+                    if(srcMethod.hasMatch()) continue
+                    val ranking = ClassifierUtil.rank(srcMethod, srcCls.match!!.memberMethods.toList(), MethodClassifier.getRankers(level), ClassifierUtil::isPotentiallyEqual, maxMismatch)
+                    if(checkRank(ranking, maxScore)) {
+                        val match = ranking[0].subject
+                        matches[srcMethod] = match
+                    } else {
+                        unmatched++
+                    }
+                    ProgressUtil.step()
+                }
+                if(unmatched > 0) totalUnmatched.addAndGet(unmatched)
+            }
+            ProgressUtil.stop()
+
+            reduceMatches(matches)
+            return matches
+        }
+
+        val matches = matchMemberMethods(level, totalUnmatched)
+        matches.forEach { (src, dst) ->
+            match(src, dst)
+        }
+
+        println("Matched ${matches.size} member-methods. (${totalUnmatched.get()} unmatched)")
+
+        return matches.isNotEmpty()
+    }
+
+    private fun match(a: ClassInstance, b: ClassInstance) {
         if(a.match == b) return
 
         if(a.hasMatch()) {
@@ -135,7 +245,7 @@ object Updater {
         println("Matched class: $a -> $b.")
     }
 
-    fun match(a: MethodInstance, b: MethodInstance) {
+    private fun match(a: MethodInstance, b: MethodInstance) {
         if(a.match == b) return
 
         if(a.hasMatch()) {
@@ -151,10 +261,12 @@ object Updater {
         a.match = b
         b.match = a
 
-        a.argTypes.forEachIndexed { i, argA ->
-            val argB = b.argTypes[i]
-            if(ClassifierUtil.isPotentiallyEqual(argA, argB)) {
-                match(argA, argB)
+        if(a.argTypes.size == b.argTypes.size) {
+            a.argTypes.forEachIndexed { i, argA ->
+                val argB = b.argTypes[i]
+                if(ClassifierUtil.isPotentiallyEqual(argA, argB)) {
+                    match(argA, argB)
+                }
             }
         }
 
@@ -162,19 +274,13 @@ object Updater {
             match(a.retType, b.retType)
         }
 
-        a.parents.forEachIndexed { i, parentA ->
-            if(b.parents.isEmpty()) return@forEachIndexed
-            val parentB = b.parents.toList()[i]
-            if(ClassifierUtil.isPotentiallyEqual(parentA, parentB)) {
-                match(parentA, parentB)
-            }
-        }
-
-        a.children.forEachIndexed { i, childA ->
-            if(b.children.isEmpty()) return@forEachIndexed
-            val childB = b.children.toList()[i]
-            if(ClassifierUtil.isPotentiallyEqual(childA, childB)) {
-                match(childA, childB)
+        if(a.parents.size == b.parents.size) {
+            a.parents.forEachIndexed { i, parentA ->
+                if(b.parents.isEmpty()) return@forEachIndexed
+                val parentB = b.parents.toList()[i]
+                if(ClassifierUtil.isPotentiallyEqual(parentA, parentB)) {
+                    match(parentA, parentB)
+                }
             }
         }
 
@@ -241,6 +347,45 @@ object Updater {
                 field.match!!.unmatch()
                 field.unmatch()
             }
+        }
+    }
+
+    private fun getScore(rawScore: Double, maxScore: Double): Double {
+        val ret = rawScore / maxScore
+        return ret * ret
+    }
+
+    private fun getRawScore(score: Double, maxScore: Double): Double {
+        return sqrt(score) * maxScore
+    }
+
+    private fun checkRank(ranking: List<RankResult<*>>, maxScore: Double): Boolean {
+        if(ranking.isEmpty()) return false
+
+        val absThreshold = 0.8
+        val relThreshold = 0.08
+
+        val score = getScore(ranking[0].score, maxScore)
+        if(score < absThreshold) return false
+
+        return if(ranking.size == 1) true else {
+            val nextScore = getScore(ranking[1].score, maxScore)
+            nextScore < score * (1 - relThreshold)
+        }
+    }
+
+    private fun <T> reduceMatches(matches: ConcurrentHashMap<T, T>) {
+        val matched = hashSetOf<T>()
+        val conflicts = hashSetOf<T>()
+
+        matches.values.forEach { match ->
+            if(!matched.add(match)) {
+                conflicts.add(match)
+            }
+        }
+
+        if(conflicts.isNotEmpty()) {
+            matches.values.removeAll(conflicts)
         }
     }
 

@@ -83,6 +83,33 @@ object ClassifierUtil {
 
     private fun ClassInstance.isArray() = name.startsWith("[")
 
+    fun <T : Matchable<T>> rank(src: T, dsts: List<T>, rankers: List<Ranker<T>>, check: (T, T) -> Boolean, maxMismatch: Double): List<RankResult<T>> {
+         val results = mutableListOf<RankResult<T>>()
+        for(dst in dsts) {
+            val result = rank(src, dst, rankers, check, maxMismatch)
+            if(result != null) results.add(result)
+        }
+        return results.sortedByDescending { it.score }
+    }
+
+    private fun <T : Matchable<T>> rank(src: T, dst: T, rankers: List<Ranker<T>>, check: (T, T) -> Boolean, maxMismatch: Double): RankResult<T>? {
+        if(!check(src, dst)) return null
+
+        var score = 0.0
+        var mismatch = 0.0
+
+        rankers.forEach { ranker ->
+            val cScore = ranker.getScore(src, dst)
+            val weight = ranker.weight
+            val weightedScore = cScore * weight
+            mismatch += weight - weightedScore
+            if(mismatch >= maxMismatch) return null
+            score += weightedScore
+        }
+
+        return RankResult(dst, score)
+    }
+
     /**
      * === COMPARE FUNCTIONS ===
      */
