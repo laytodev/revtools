@@ -8,4 +8,7 @@ abstract class Matchable<T : Matchable<T>> {
 
     fun hasMatch() = match != null
 
+    fun unmatch() {
+        match = null
+    }
 }

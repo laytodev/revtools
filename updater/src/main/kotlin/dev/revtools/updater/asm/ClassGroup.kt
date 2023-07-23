@@ -35,6 +35,7 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
         if(classMap.containsKey(cls.name)) return false
         cls.group = this
         cls.isObfuscated = cls.name.isObfuscatedName()
+        if(isShared) { cls.match = cls }
         classMap[cls.name] = cls
         return true
     }
@@ -107,12 +108,14 @@ class ClassGroup(val env: ClassEnv, val isShared: Boolean) {
         cls.node.methods.forEach {
             val method = MethodInstance(cls, it)
             method.isObfuscated = method.name.isObfuscatedName()
+            if(method.cls.isShared) { method.match = method }
             cls.methods.add(method)
         }
 
         cls.node.fields.forEach {
             val field = FieldInstance(cls, it)
             field.isObfuscated = field.name.isObfuscatedName()
+            if(field.cls.isShared) { field.match = field }
             cls.fields.add(field)
         }
 
