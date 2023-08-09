@@ -55,6 +55,18 @@ class EmptyClassRemover : Transformer {
             referencedClasses.add(itf)
         }
 
+        if(cls.visibleAnnotations != null) {
+            cls.visibleAnnotations.forEach {
+                referencedClasses.add(Type.getType(it.desc).internalName)
+            }
+        }
+
+        if(cls.invisibleAnnotations != null) {
+            cls.invisibleAnnotations.forEach {
+                referencedClasses.add(Type.getType(it.desc).internalName)
+            }
+        }
+
         return false
     }
 
