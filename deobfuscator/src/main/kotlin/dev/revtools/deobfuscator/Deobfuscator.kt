@@ -30,6 +30,9 @@ class Deobfuscator(private val inputFile: File, private val outputFile: File) {
          */
         Logger.info("Registering transformers.")
 
+        register<NameGenerator>()
+        register<StaticMethodOwnerNormalizer>()
+
         register<FieldOwnerFixer>()
         register<RuntimeExceptionRemover>()
         register<DeadCodeRemover>()
