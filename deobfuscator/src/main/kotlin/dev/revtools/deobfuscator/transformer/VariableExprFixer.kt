@@ -2,13 +2,22 @@ package dev.revtools.deobfuscator.transformer
 
 import dev.revtools.deobfuscator.Transformer
 import dev.revtools.deobfuscator.asm.LabelMap
+import dev.revtools.deobfuscator.asm.analysis.rewriter.CodeAnalyzer
+import dev.revtools.deobfuscator.asm.analysis.rewriter.CodeRewriter
+import dev.revtools.deobfuscator.asm.analysis.rewriter.ICRReferenceHandler
+import dev.revtools.deobfuscator.asm.analysis.rewriter.value.CodeReferenceValue
+import dev.revtools.deobfuscator.asm.analysis.rewriter.value.values.NumberValue
 import dev.revtools.deobfuscator.asm.tree.ClassGroup
+import dev.revtools.deobfuscator.asm.tree.isStatic
+import dev.revtools.deobfuscator.asm.tree.owner
 import org.objectweb.asm.Opcodes.*
-import org.objectweb.asm.tree.AbstractInsnNode
-import org.objectweb.asm.tree.VarInsnNode
+import org.objectweb.asm.tree.*
+import org.objectweb.asm.tree.analysis.BasicValue
+import org.objectweb.asm.tree.analysis.Frame
+import org.objectweb.asm.util.Printer
 import org.tinylog.kotlin.Logger
 
-class ExpressionOrderFixer : Transformer {
+class VariableExprFixer : Transformer {
 
     private var count = 0
 
@@ -55,5 +64,4 @@ class ExpressionOrderFixer : Transformer {
     }
 
     private fun AbstractInsnNode.isConstant(): Boolean = opcode in ICONST_M1..LDC
-
 }

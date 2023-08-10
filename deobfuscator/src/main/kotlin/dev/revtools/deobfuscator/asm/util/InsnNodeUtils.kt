@@ -7,9 +7,11 @@ import org.objectweb.asm.tree.IntInsnNode
 import org.objectweb.asm.tree.JumpInsnNode
 import org.objectweb.asm.tree.LabelNode
 import org.objectweb.asm.tree.LdcInsnNode
+import org.objectweb.asm.tree.LineNumberNode
 import org.objectweb.asm.tree.LookupSwitchInsnNode
 import org.objectweb.asm.tree.TableSwitchInsnNode
 import org.objectweb.asm.tree.TryCatchBlockNode
+import org.objectweb.asm.util.Printer
 import org.objectweb.asm.util.Textifier
 import org.objectweb.asm.util.TraceMethodVisitor
 import java.io.PrintWriter
@@ -308,6 +310,12 @@ fun AbstractInsnNode.toPrettyString(): String {
             return stringWriter.toString().trim()
         }
     }
+}
+
+fun AbstractInsnNode.toOpcodeString(): String {
+    return if(this is LabelNode) "LABEL"
+    else if(this is LineNumberNode) "LINE $line"
+    else Printer.OPCODES[opcode]
 }
 
 fun TryCatchBlockNode.isBodyEmpty(): Boolean {
